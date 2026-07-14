@@ -34,9 +34,16 @@
         android:hardwareAccelerated="true">
         <activity
             android:name=".MainActivity"
-            android:exported="true"
+            android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait" />
+
+        <!-- 药品录入流程（首页） -->
+        <activity
+            android:name=".drugentry.DrugEntryActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.MyOCR.DrugEntry">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

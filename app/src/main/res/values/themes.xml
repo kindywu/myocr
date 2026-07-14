@@ -13,4 +13,13 @@
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
         <!-- Customize your theme here. -->
     </style>
+
+    <!-- 药品录入主题 - 无 ActionBar，使用 FragmentManager -->
+    <style name="Theme.MyOCR.DrugEntry" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand_500</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorPrimaryContainer">@color/brand_100</item>
+        <item name="android:statusBarColor">@color/surface_card</item>
+        <item name="android:navigationBarColor">@color/surface_card</item>
+    </style>
 </resources>

@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/drug_entry_background"
+    android:orientation="vertical">
+
+    <!-- 顶部栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="48dp"
+        android:paddingBottom="16dp"
+        android:background="@color/surface_card">
+
+        <ImageButton
+            android:id="@+id/backButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_arrow_back"
+            android:contentDescription="@string/abc_action_bar_up_description"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/text_primary" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/confirm_title"
+            android:textSize="18sp"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:layout_marginStart="8dp" />
+
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <!-- 提示 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/confirm_hint"
+                android:textSize="13sp"
+                android:textColor="@color/text_tertiary"
+                android:layout_marginBottom="16dp" />
+
+            <!-- 已拍照片缩略图 -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/photoRecycler"
+                android:layout_width="match_parent"
+                android:layout_height="80dp"
+                android:layout_marginBottom="20dp"
+                android:orientation="horizontal"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+                android:visibility="gone" />
+
+            <!-- 信息表单 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="1dp"
+                app:cardBackgroundColor="@color/surface_card">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <!-- 药品名称 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginBottom="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_drug_name"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_tertiary" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/drugNameLayout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            app:hintEnabled="false"
+                            app:endIconMode="clear_text">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/drugNameInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="15sp"
+                                android:textColor="@color/text_primary"
+                                android:inputType="text"
+                                android:importantForAutofill="no"
+                                android:paddingVertical="12dp" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/divider_color" />
+
+                    <!-- 有效期 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="16dp"
+                        android:layout_marginBottom="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_expiry_date"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_tertiary" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/expiryLayout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            app:hintEnabled="false"
+                            app:startIconDrawable="@drawable/ic_calendar"
+                            app:startIconTint="@color/brand_500">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/expiryInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="15sp"
+                                android:textColor="@color/text_primary"
+                                android:inputType="date"
+                                android:hint="yyyy-MM"
+                                android:importantForAutofill="no"
+                                android:paddingVertical="12dp" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/divider_color" />
+
+                    <!-- 生产厂家 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="16dp"
+                        android:layout_marginBottom="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_manufacturer"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_tertiary" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/manufacturerLayout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            app:hintEnabled="false"
+                            app:endIconMode="clear_text">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/manufacturerInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="15sp"
+                                android:textColor="@color/text_primary"
+                                android:inputType="text"
+                                android:importantForAutofill="no"
+                                android:paddingVertical="12dp" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/divider_color" />
+
+                    <!-- 批号 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_batch_number"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_tertiary" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/batchLayout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            app:hintEnabled="false"
+                            app:endIconMode="clear_text">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/batchInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="15sp"
+                                android:textColor="@color/text_primary"
+                                android:inputType="text"
+                                android:importantForAutofill="no"
+                                android:paddingVertical="12dp" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 错误提示 -->
+            <TextView
+                android:id="@+id/errorText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:textColor="#FFE53935"
+                android:visibility="gone"
+                android:layout_marginBottom="8dp"
+                android:padding="8dp" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+    <!-- 保存按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="20dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="24dp"
+        android:background="@color/surface_card"
+        android:elevation="8dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/saveButton"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="@string/save_drug_info"
+            android:textSize="16sp"
+            android:backgroundTint="@color/brand_500" />
+
+    </LinearLayout>
+
+</LinearLayout>

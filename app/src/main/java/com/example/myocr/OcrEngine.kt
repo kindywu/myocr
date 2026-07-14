@@ -1,10 +1,13 @@
 package com.example.myocr
 
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.util.Log
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import com.google.mlkit.vision.text.Text
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -24,27 +27,32 @@ class OcrEngine private constructor() : AutoCloseable {
     private val isReleased = AtomicBoolean(false)
 
     /**
-     * 对 Bitmap 进行 OCR 识别（同步阻塞调用）
+     * 对 Bitmap 进行 OCR 识别（同步阻塞调用，返回纯文本）
      *
-     * ML Kit 的 process() 是异步的，此方法通过阻塞等待封装为同步调用，
-     * 便于在协程/后台线程中使用。
-     *
-     * @param bitmap 待识别的位图
-     * @return 识别到的文本，没有则返回空字符串
+     * 兼容旧接口，内部委托给 recognizeStructured()。
      */
     fun recognize(bitmap: Bitmap): String {
+        return recognizeStructured(bitmap).fullText
+    }
+
+    /**
+     * 对 Bitmap 进行 OCR 识别（同步阻塞调用，返回结构化结果）
+     *
+     * 包含逐行文本 + 位置矩形 + 置信度，便于下游按语义分析。
+     */
+    fun recognizeStructured(bitmap: Bitmap): OcrResult {
         if (isReleased.get()) {
             throw IllegalStateException("OcrEngine has been released")
         }
 
         val image = InputImage.fromBitmap(bitmap, 0)
-        val latch = java.util.concurrent.CountDownLatch(1)
-        var resultText = ""
+        val latch = CountDownLatch(1)
+        var mlKitText: Text? = null
         var error: Exception? = null
 
         recognizer.process(image)
             .addOnSuccessListener { result ->
-                resultText = result.text.trim()
+                mlKitText = result
                 latch.countDown()
             }
             .addOnFailureListener { e ->
@@ -52,15 +60,15 @@ class OcrEngine private constructor() : AutoCloseable {
                 latch.countDown()
             }
 
-        // 阻塞等待结果（应在后台线程调用）
         latch.await()
 
         if (error != null) {
             throw error!!
         }
 
-        Log.d(TAG, "OCR recognized ${resultText.length} characters")
-        return resultText
+        val result = OcrResult.fromMlKit(mlKitText!!)
+        Log.d(TAG, "OCR recognized ${result.lines.size} lines, ${result.fullText.length} chars")
+        return result
     }
 
     override fun close() {
@@ -75,12 +83,90 @@ class OcrEngine private constructor() : AutoCloseable {
 
         /**
          * 创建 OCR 引擎实例
-         *
-         * ML Kit 捆绑模式无需初始化 traineddata，此方法直接返回实例。
          */
         fun create(): OcrEngine {
             Log.d(TAG, "Creating ML Kit Chinese OCR engine (bundled mode)")
             return OcrEngine()
+        }
+    }
+}
+
+/**
+ * OCR 识别结果（结构化）
+ *
+ * @param fullText 全部文本（按阅读顺序拼接，每行换行分隔）
+ * @param lines    逐行识别结果，按阅读顺序排列
+ */
+data class OcrResult(
+    val fullText: String,
+    val lines: List<OcrLine>
+) {
+    companion object {
+        /**
+         * 从 ML Kit Text 对象转换为结构化 OcrResult
+         */
+        fun fromMlKit(text: Text): OcrResult {
+            val allLines = mutableListOf<OcrLine>()
+            val textBuilder = StringBuilder()
+            var blockIndex = 0
+
+            // 按 textBlock（段落）遍历
+            for (block in text.textBlocks) {
+                if (blockIndex > 0) textBuilder.append('\n')
+
+                for (line in block.lines) {
+                    val text = line.text?.trim() ?: ""
+                    if (text.isNotEmpty()) {
+                        allLines.add(
+                            OcrLine(
+                                text = text,
+                                boundingBox = line.boundingBox?.let { Rect(it) },
+                                confidence = line.confidence ?: 0f
+                            )
+                        )
+                        textBuilder.append(text).append('\n')
+                    }
+                }
+                blockIndex++
+            }
+
+            // 去掉末尾多余的换行
+            var fullText = textBuilder.toString().trim()
+            if (fullText.isEmpty()) {
+                fullText = text.text?.trim() ?: ""
+            }
+
+            return OcrResult(fullText = fullText, lines = allLines)
+        }
+    }
+}
+
+/**
+ * OCR 单行识别结果
+ *
+ * @param text        该行文字
+ * @param boundingBox 该行在原始图片上的位置矩形（像素坐标）
+ * @param confidence  识别置信度（0.0 ~ 1.0）
+ */
+data class OcrLine(
+    val text: String,
+    val boundingBox: Rect? = null,
+    val confidence: Float = 0f
+) {
+    /**
+     * 根据 boundingBox 的 Y 坐标估算行在图片中的垂直位置
+     *
+     * @return "上方" | "中上方" | "中部" | "中下方" | "下方" | "未知"
+     */
+    fun estimateVerticalPosition(imageHeight: Int): String {
+        if (boundingBox == null || imageHeight <= 0) return "未知"
+        val centerY = boundingBox.centerY().toFloat() / imageHeight
+        return when {
+            centerY < 0.2f -> "上方"
+            centerY < 0.4f -> "中上方"
+            centerY < 0.6f -> "中部"
+            centerY < 0.8f -> "中下方"
+            else -> "下方"
         }
     }
 }

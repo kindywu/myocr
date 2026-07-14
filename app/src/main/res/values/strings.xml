@@ -23,4 +23,63 @@
     <string name="speak">朗读</string>
     <string name="stop">停止</string>
     <string name="tts_not_ready">语音引擎未就绪</string>
+
+    <!-- 药品录入 -->
+    <string name="drug_entry_title">药品录入</string>
+    <string name="drug_entry_subtitle">OCR 帮填，手填兜底</string>
+    <string name="drug_entry_scan">拍照识别</string>
+    <string name="drug_entry_scan_desc">拍摄药品包装，自动识别信息</string>
+    <string name="drug_entry_manual">手动填写</string>
+    <string name="drug_entry_manual_desc">逐项输入药品信息</string>
+
+    <!-- 拍照采集 -->
+    <string name="capture_step">步骤 %1$d/3</string>
+    <string name="capture_front_hint">将药品包装正面放入框内</string>
+    <string name="capture_retake">重拍</string>
+
+    <!-- 多角度补全 -->
+    <string name="completion_title">视频采集进度</string>
+    <string name="completion_progress">已识别 %1$d/%2$d 个字段</string>
+    <string name="field_drug_name">药品名称</string>
+    <string name="field_expiry_date">有效期</string>
+    <string name="field_manufacturer">生产厂家</string>
+    <string name="field_batch_number">批号</string>
+    <string name="recognized">已识别</string>
+    <string name="pending_capture">待拍摄</string>
+    <string name="continue_capture">重新拍摄</string>
+    <string name="view_result">查看结果</string>
+
+    <!-- 信息确认 -->
+    <string name="confirm_title">人工确认</string>
+    <string name="confirm_hint">请核对以下信息，可点击编辑</string>
+    <string name="save_drug_info">保存药品信息</string>
+    <string name="edit_hint">点击编辑</string>
+    <string name="required_field">必填</string>
+
+    <!-- 手动录入 -->
+    <string name="manual_title">手动录入</string>
+    <string name="go_capture">去拍照补全</string>
+    <string name="save">保存</string>
+
+    <!-- 保存完成 -->
+    <string name="saved_title">保存完成</string>
+    <string name="saved_success">药品信息已保存</string>
+    <string name="continue_entry">继续录入</string>
+    <string name="done">完成</string>
+
+    <!-- 验证 -->
+    <string name="error_drug_name_required">请输入药品名称</string>
+    <string name="error_invalid_date">日期格式无效</string>
+    <string name="ocr_recognizing">正在识别…</string>
+    <string name="ocr_retry">识别失败，请重试</string>
+
+    <!-- 通用扫描入口 -->
+    <string name="general_scan">通用文字识别</string>
+    <string name="general_scan_desc">拍照识文字、复制、朗读、上传到电脑</string>
+
+    <!-- 调试 -->
+    <string name="view_raw_ocr">查看识别原文 →</string>
+    <string name="debug_raw_ocr_title">OCR 原始识别结果</string>
+    <string name="debug_regex_title">正则解析结果</string>
+    <string name="debug_llm_title">LLM 候选结果</string>
 </resources>

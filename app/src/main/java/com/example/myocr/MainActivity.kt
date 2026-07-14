@@ -26,6 +26,9 @@ import androidx.core.content.ContextCompat
 import com.example.myocr.databinding.ActivityMainBinding
 import com.google.android.material.snackbar.Snackbar
 import android.net.Uri
+import android.view.Menu
+import android.view.MenuItem
+import com.example.myocr.drugentry.DrugEntryActivity
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
@@ -98,6 +101,24 @@ class MainActivity : AppCompatActivity() {
         binding.resultCard.visibility = View.GONE
         binding.progressContainer.visibility = View.GONE
         binding.serverCard.visibility = View.VISIBLE
+
+        // 启用 Toolbar 菜单
+        binding.toolbar.inflateMenu(R.menu.main_menu)
+        binding.toolbar.setOnMenuItemClickListener { menuItem ->
+            onMenuItemClick(menuItem)
+        }
+    }
+
+    // ==================== 菜单 ====================
+
+    private fun onMenuItemClick(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_drug_entry -> {
+                startActivity(android.content.Intent(this, DrugEntryActivity::class.java))
+                true
+            }
+            else -> false
+        }
     }
 
     // ==================== 上传设置 ====================

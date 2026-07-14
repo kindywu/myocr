@@ -69,6 +69,9 @@ dependencies {
     // ML Kit 中文 OCR - 捆绑模式，模型内嵌 APK，无需 GMS
     implementation("com.google.mlkit:text-recognition-chinese:16.0.0")
 
+    // Fragment KTX - 用于药品录入流程的多页面导航
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

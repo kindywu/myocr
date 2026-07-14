@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/drug_entry_background"
+    android:orientation="vertical">
+
+    <!-- 顶部栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="48dp"
+        android:paddingBottom="16dp"
+        android:background="@color/surface_card">
+
+        <ImageButton
+            android:id="@+id/backButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_arrow_back"
+            android:contentDescription="@string/abc_action_bar_up_description"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/text_primary" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/manual_title"
+            android:textSize="18sp"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:layout_marginStart="8dp" />
+
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <!-- 拍照补全入口 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/goCaptureCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="1dp"
+                app:cardBackgroundColor="@color/brand_50"
+                app:strokeColor="@color/brand_100"
+                app:strokeWidth="1dp"
+                android:foreground="?attr/selectableItemBackground">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:padding="16dp">
+
+                    <ImageView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@drawable/ic_capture_small"
+                        android:contentDescription="@string/go_capture"
+                        android:tint="@color/brand_500" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="12dp"
+                        android:text="@string/go_capture"
+                        android:textSize="15sp"
+                        android:textColor="@color/brand_500"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 表单卡片 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="1dp"
+                app:cardBackgroundColor="@color/surface_card">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <!-- 药品名称 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginBottom="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_drug_name"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/required_field"
+                            android:textSize="11sp"
+                            android:textColor="#FFE53935"
+                            android:layout_marginBottom="4dp" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/drugNameLayout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            app:hintEnabled="false"
+                            app:endIconMode="clear_text">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/drugNameInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="15sp"
+                                android:hint="例：阿莫西林胶囊"
+                                android:inputType="text"
+                                android:importantForAutofill="no"
+                                android:paddingVertical="12dp" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                    </LinearLayout>
+
+                    <!-- 有效期 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginBottom="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_expiry_date"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/expiryLayout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            app:hintEnabled="false"
+                            app:startIconDrawable="@drawable/ic_calendar"
+                            app:startIconTint="@color/brand_500">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/expiryInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="15sp"
+                                android:hint="yyyy-MM"
+                                android:inputType="date"
+                                android:importantForAutofill="no"
+                                android:paddingVertical="12dp" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                    </LinearLayout>
+
+                    <!-- 生产厂家 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginBottom="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_manufacturer"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/manufacturerLayout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            app:hintEnabled="false"
+                            app:endIconMode="clear_text">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/manufacturerInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="15sp"
+                                android:hint="例：珠海联邦制药股份有限公司"
+                                android:inputType="text"
+                                android:importantForAutofill="no"
+                                android:paddingVertical="12dp" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                    </LinearLayout>
+
+                    <!-- 批号 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_batch_number"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/batchLayout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            app:hintEnabled="false"
+                            app:endIconMode="clear_text">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/batchInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="15sp"
+                                android:hint="例：H20093069"
+                                android:inputType="text"
+                                android:importantForAutofill="no"
+                                android:paddingVertical="12dp" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 错误提示 -->
+            <TextView
+                android:id="@+id/errorText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:textColor="#FFE53935"
+                android:visibility="gone"
+                android:layout_marginTop="8dp"
+                android:padding="8dp" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+    <!-- 保存按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="20dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="24dp"
+        android:background="@color/surface_card"
+        android:elevation="8dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/saveButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/save"
+            android:textSize="16sp"
+            android:backgroundTint="@color/brand_500" />
+
+    </LinearLayout>
+
+</LinearLayout>

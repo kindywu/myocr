@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF000000">
+
+    <!-- 相机预览 -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/viewFinder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 取景框覆盖层 -->
+    <View
+        android:id="@+id/viewfinderOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/viewfinder_overlay" />
+
+    <!-- 顶部工具栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="48dp"
+        android:paddingBottom="16dp">
+
+        <ImageButton
+            android:id="@+id/backButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_arrow_back"
+            android:contentDescription="@string/abc_action_bar_up_description"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@android:color/white" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textAlignment="center"
+            android:text="@string/capture_step"
+            android:textSize="14sp"
+            android:textColor="@android:color/white"
+            android:layout_marginEnd="40dp" />
+
+    </LinearLayout>
+
+    <!-- 底部操作区 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingHorizontal="24dp"
+        android:paddingBottom="48dp">
+
+        <!-- 提示文字 -->
+        <TextView
+            android:id="@+id/captureHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="32dp"
+            android:text="@string/capture_front_hint"
+            android:textSize="14sp"
+            android:textColor="@android:color/white" />
+
+        <RelativeLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+
+            <!-- 外圈 -->
+            <View
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:background="@drawable/capture_ring_outer" />
+
+            <!-- 拍照按钮 -->
+            <ImageButton
+                android:id="@+id/captureButton"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_centerInParent="true"
+                android:background="@drawable/capture_button_inner"
+                android:contentDescription="@string/capture"
+                android:scaleType="centerInside"
+                android:elevation="2dp" />
+
+        </RelativeLayout>
+
+    </LinearLayout>
+
+</FrameLayout>

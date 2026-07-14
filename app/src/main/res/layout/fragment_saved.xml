@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/drug_entry_background"
+    android:orientation="vertical"
+    android:gravity="center_horizontal">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingHorizontal="24dp"
+            android:paddingTop="80dp">
+
+            <!-- 成功图标 -->
+            <ImageView
+                android:id="@+id/successIcon"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:src="@drawable/ic_success_check"
+                android:contentDescription="@string/saved_success"
+                android:layout_marginBottom="20dp" />
+
+            <!-- 成功文案 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/saved_title"
+                android:textSize="24sp"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/saved_success"
+                android:textSize="15sp"
+                android:textColor="@color/text_secondary" />
+
+            <!-- 数据摘要卡片 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="32dp"
+                android:layout_marginBottom="24dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="1dp"
+                app:cardBackgroundColor="@color/surface_card">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="已保存信息"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_tertiary"
+                        android:layout_marginBottom="12dp" />
+
+                    <!-- 药品名称 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:layout_width="100dp"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_drug_name"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_tertiary" />
+
+                        <TextView
+                            android:id="@+id/savedDrugName"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textSize="15sp"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/divider_color" />
+
+                    <!-- 有效期 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:layout_width="100dp"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_expiry_date"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_tertiary" />
+
+                        <TextView
+                            android:id="@+id/savedExpiry"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textSize="15sp"
+                            android:textColor="@color/text_primary" />
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/divider_color" />
+
+                    <!-- 生产厂家 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:layout_width="100dp"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_manufacturer"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_tertiary" />
+
+                        <TextView
+                            android:id="@+id/savedManufacturer"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textSize="15sp"
+                            android:textColor="@color/text_primary" />
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/divider_color" />
+
+                    <!-- 批号 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="8dp">
+
+                        <TextView
+                            android:layout_width="100dp"
+                            android:layout_height="wrap_content"
+                            android:text="@string/field_batch_number"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_tertiary" />
+
+                        <TextView
+                            android:id="@+id/savedBatch"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textSize="15sp"
+                            android:textColor="@color/text_primary" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+
+    </ScrollView>
+
+    <!-- 底部操作按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="16dp"
+        android:paddingBottom="24dp"
+        android:background="@color/surface_card"
+        android:elevation="8dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/continueButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:text="@string/continue_entry"
+            android:textColor="@color/brand_500"
+            app:strokeColor="@color/brand_500" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/doneButton"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="@string/done"
+            android:backgroundTint="@color/brand_500" />
+
+    </LinearLayout>
+
+</LinearLayout>

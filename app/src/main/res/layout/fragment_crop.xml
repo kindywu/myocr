@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#FF000000">
+
+    <!-- 顶部栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="48dp"
+        android:paddingBottom="12dp">
+
+        <ImageButton
+            android:id="@+id/backButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_arrow_back"
+            android:contentDescription="@string/abc_action_bar_up_description"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@android:color/white" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="选择识别区域"
+            android:textSize="16sp"
+            android:textColor="@android:color/white"
+            android:textAlignment="center"
+            android:layout_marginEnd="40dp" />
+
+    </LinearLayout>
+
+    <!-- 裁剪视图 -->
+    <com.example.myocr.drugentry.CropOverlayView
+        android:id="@+id/cropOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- 底部操作 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="16dp"
+        android:paddingBottom="32dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/retakeButton"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="重拍"
+            android:textColor="@android:color/white" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/confirmButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="确认识别"
+            android:textColor="@android:color/white"
+            android:backgroundTint="@color/brand_500" />
+
+    </LinearLayout>
+
+</LinearLayout>
