@@ -1,6 +1,7 @@
 package com.example.myocr.drugentry
 
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.example.myocr.OcrLine
 import org.json.JSONArray
 import org.json.JSONObject
@@ -26,17 +27,129 @@ import java.net.URL
  */
 class DeepSeekClient(
     private val apiKey: String,
-    private val promptManager: PromptManager
+    private val promptManager: PromptManager,
+    private val config: LlmConfig = LlmConfig()
 ) {
+
+    /** LLM 请求超时（毫秒） */
+    private val timeoutMs: Int get() = config.timeoutMs
+
+    /**
+     * LLM 配置数据类
+     */
+    data class LlmConfig(
+        val apiUrl: String = "https://api.deepseek.com/chat/completions",
+        val model: String = "deepseek-v4-flash",
+        val timeoutMs: Int = 30_000
+    )
 
     companion object {
         private const val TAG = "DeepSeekClient"
-        private const val API_URL = "https://api.deepseek.com/chat/completions"
-        private const val MODEL = "deepseek-chat"
-        private const val TIMEOUT_MS = 30_000
 
         /** 字段 key 列表，用于遍历 */
-        private val FIELD_KEYS = listOf("drugName", "expiryDate", "manufacturer", "batchNumber")
+        @VisibleForTesting
+        internal val FIELD_KEYS = listOf("drugName", "expiryDate", "manufacturer", "batchNumber")
+
+        // ==================== 响应解析（纯函数，可单独测试） ====================
+
+        /**
+         * 解析 LLM 响应中的多候选 JSON
+         *
+         * 期望格式：
+         * {
+         *   "drugName": {
+         *     "candidates": [
+         *       {"value": "阿莫西林胶囊", "confidence": 0.95, "reason": "..."},
+         *       {"value": "阿莫西林", "confidence": 0.30, "reason": "..."}
+         *     ]
+         *   },
+         *   ...
+         * }
+         */
+        @VisibleForTesting
+        internal fun parseResponse(responseJson: String): Map<String, FieldCandidates> {
+            val json = JSONObject(responseJson)
+            val choices = json.getJSONArray("choices")
+
+            if (choices.length() == 0) {
+                throw RuntimeException("API 返回空结果")
+            }
+
+            val content = choices.getJSONObject(0)
+                .getJSONObject("message")
+                .getString("content")
+
+            val resultJson = JSONObject(content)
+            val fieldMap = mutableMapOf<String, FieldCandidates>()
+
+            // 1️⃣ 解析标准字段
+            for (fieldKey in FIELD_KEYS) {
+                fieldMap[fieldKey] = extractFieldCandidates(resultJson, fieldKey)
+            }
+
+            // 2️⃣ 兼容处理：markdown prompt 将 batchNumber 拆分为 approvalNumber + lotNumber
+            val existingBatch = fieldMap["batchNumber"]?.candidates ?: emptyList()
+            if (existingBatch.isEmpty() && (resultJson.has("approvalNumber") || resultJson.has("lotNumber"))) {
+                val extra = mutableListOf<Candidate>()
+                extra.addAll(extractFieldCandidates(resultJson, "approvalNumber").candidates)
+                extra.addAll(extractFieldCandidates(resultJson, "lotNumber").candidates)
+                if (extra.isNotEmpty()) {
+                    fieldMap["batchNumber"] = FieldCandidates(extra.sortedByDescending { it.confidence })
+                }
+            }
+
+            return fieldMap
+        }
+
+        /**
+         * 从 JSON 中提取指定字段的候选列表
+         */
+        @VisibleForTesting
+        internal fun extractFieldCandidates(json: JSONObject, fieldKey: String): FieldCandidates {
+            if (!json.has(fieldKey)) return FieldCandidates()
+
+            val fieldValue = json.get(fieldKey)
+
+            return when (fieldValue) {
+                is JSONArray -> {
+                    parseJsonArrayCandidates(fieldValue)
+                }
+                is JSONObject -> {
+                    if (fieldValue.has("candidates")) {
+                        parseJsonArrayCandidates(fieldValue.getJSONArray("candidates"))
+                    } else {
+                        FieldCandidates()
+                    }
+                }
+                is String -> {
+                    val str = fieldValue.trim()
+                    if (str.isNotEmpty()) {
+                        FieldCandidates(listOf(Candidate(str, 0.5f, "旧格式兼容")))
+                    } else {
+                        FieldCandidates()
+                    }
+                }
+                else -> FieldCandidates()
+            }
+        }
+
+        /**
+         * 解析 JSONArray 候选列表
+         */
+        @VisibleForTesting
+        internal fun parseJsonArrayCandidates(arr: JSONArray): FieldCandidates {
+            val candidates = mutableListOf<Candidate>()
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: continue
+                val value = item.optString("value", "").trim()
+                if (value.isBlank()) continue
+
+                val confidence = item.optDouble("confidence", 0.0).toFloat()
+                val reason = item.optString("reason", "")
+                candidates.add(Candidate(value, confidence, reason))
+            }
+            return FieldCandidates(candidates)
+        }
 
         /**
          * 用 [DrugOcrParser.preFilter] 过滤 OcrLine 列表
@@ -100,6 +213,8 @@ class DeepSeekClient(
         val drugInfo: DrugInfo = DrugInfo(),
         /** 实际发送给 LLM 的完整输入文本（调试用） */
         val formattedInput: String = "",
+        /** LLM 原始响应 JSON（调试用，可直接用于 [parseResponse] 测试） */
+        val rawApiResponse: String = "",
         val error: String = ""
     )
 
@@ -131,7 +246,7 @@ class DeepSeekClient(
             val formattedText = promptManager.buildPositionalUserMessage(filteredLines, voiceInputDrugName)
 
             // 3️⃣ 调用 API（带位置 prompt）
-            val responseJson = callApi(formattedText, promptManager.fullExtraction.systemPrompt)
+            val responseJson = callApi(formattedText, promptManager.fullExtraction.systemTemplate)
 
             // 4️⃣ 解析多候选响应
             val rawCandidates = parseResponse(responseJson)
@@ -151,7 +266,8 @@ class DeepSeekClient(
                 success = true,
                 allCandidates = rawCandidates,
                 drugInfo = bestInfo,
-                formattedInput = formattedText
+                formattedInput = formattedText,
+                rawApiResponse = responseJson
             )
         } catch (e: Exception) {
             Log.e(TAG, "DeepSeek API call failed", e)
@@ -182,7 +298,7 @@ class DeepSeekClient(
             val formattedText = promptManager.buildSimpleUserMessage(filteredText, voiceInputDrugName)
 
             // 3️⃣ 调用 API（无位置 prompt）
-            val responseJson = callApi(formattedText, promptManager.perField.systemPrompt)
+            val responseJson = callApi(formattedText, promptManager.fullExtraction.systemTemplate)
 
             // 4️⃣ 解析多候选响应
             val rawCandidates = parseResponse(responseJson)
@@ -202,7 +318,8 @@ class DeepSeekClient(
                 success = true,
                 allCandidates = rawCandidates,
                 drugInfo = bestInfo,
-                formattedInput = formattedText
+                formattedInput = formattedText,
+                rawApiResponse = responseJson
             )
         } catch (e: Exception) {
             Log.e(TAG, "DeepSeek API call failed", e)
@@ -214,7 +331,7 @@ class DeepSeekClient(
 
     private fun callApi(formattedText: String, systemPrompt: String): String {
         val payload = JSONObject().apply {
-            put("model", MODEL)
+            put("model", config.model)
             put("response_format", JSONObject().put("type", "json_object"))
 
             val messages = JSONArray()
@@ -230,14 +347,14 @@ class DeepSeekClient(
             put("temperature", 0.1)
         }
 
-        val url = URL(API_URL)
+        val url = URL(config.apiUrl)
         val conn = url.openConnection() as HttpURLConnection
         conn.apply {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Authorization", "Bearer $apiKey")
-            connectTimeout = TIMEOUT_MS
-            readTimeout = TIMEOUT_MS
+            connectTimeout = timeoutMs
+            readTimeout = timeoutMs
             doOutput = true
         }
 
@@ -263,84 +380,5 @@ class DeepSeekClient(
         }
 
         return response
-    }
-
-    /**
-     * 解析 LLM 响应中的多候选 JSON
-     *
-     * 期望格式：
-     * {
-     *   "drugName": {
-     *     "candidates": [
-     *       {"value": "阿莫西林胶囊", "confidence": 0.95, "reason": "..."},
-     *       {"value": "阿莫西林", "confidence": 0.30, "reason": "..."}
-     *     ]
-     *   },
-     *   ...
-     * }
-     */
-    private fun parseResponse(responseJson: String): Map<String, FieldCandidates> {
-        val json = JSONObject(responseJson)
-        val choices = json.getJSONArray("choices")
-
-        if (choices.length() == 0) {
-            throw RuntimeException("API 返回空结果")
-        }
-
-        val content = choices.getJSONObject(0)
-            .getJSONObject("message")
-            .getString("content")
-
-        val resultJson = JSONObject(content)
-        val fieldMap = mutableMapOf<String, FieldCandidates>()
-
-        for (fieldKey in FIELD_KEYS) {
-            if (!resultJson.has(fieldKey)) {
-                fieldMap[fieldKey] = FieldCandidates()
-                continue
-            }
-
-            val fieldValue = resultJson.get(fieldKey)
-
-            when (fieldValue) {
-                is JSONArray -> {
-                    fieldMap[fieldKey] = parseJsonArrayCandidates(fieldValue)
-                }
-                is JSONObject -> {
-                    if (fieldValue.has("candidates")) {
-                        fieldMap[fieldKey] = parseJsonArrayCandidates(fieldValue.getJSONArray("candidates"))
-                    } else {
-                        fieldMap[fieldKey] = FieldCandidates()
-                    }
-                }
-                is String -> {
-                    val str = fieldValue.trim()
-                    fieldMap[fieldKey] = if (str.isNotEmpty()) {
-                        FieldCandidates(listOf(Candidate(str, 0.5f, "旧格式兼容")))
-                    } else {
-                        FieldCandidates()
-                    }
-                }
-                else -> {
-                    fieldMap[fieldKey] = FieldCandidates()
-                }
-            }
-        }
-
-        return fieldMap
-    }
-
-    private fun parseJsonArrayCandidates(arr: JSONArray): FieldCandidates {
-        val candidates = mutableListOf<Candidate>()
-        for (i in 0 until arr.length()) {
-            val item = arr.optJSONObject(i) ?: continue
-            val value = item.optString("value", "").trim()
-            if (value.isBlank()) continue
-
-            val confidence = item.optDouble("confidence", 0.0).toFloat()
-            val reason = item.optString("reason", "")
-            candidates.add(Candidate(value, confidence, reason))
-        }
-        return FieldCandidates(candidates)
     }
 }

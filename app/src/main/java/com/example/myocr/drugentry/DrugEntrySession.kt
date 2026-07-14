@@ -65,7 +65,10 @@ data class DrugEntrySession(
     val llmCandidates: Map<String, DeepSeekClient.FieldCandidates> = emptyMap(),
 
     /** OCR 原始识别文本（用于调试展示） */
-    val rawOcrText: String = ""
+    val rawOcrText: String = "",
+
+    /** LLM 原始响应 JSON（调试用，可直接用于单元测试输入） */
+    val rawApiResponse: String = ""
 )
 
 enum class DrugEntryStep {

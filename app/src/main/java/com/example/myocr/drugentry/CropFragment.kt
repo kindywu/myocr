@@ -177,9 +177,12 @@ class CropFragment : Fragment() {
                     if (llmResult.success) {
                         finalCandidates = llmResult.allCandidates
                         finalParsed = llmResult.drugInfo
-                        // 保存完整 LLM 输入到 session（调试用）
+                        // 保存 LLM 输入/响应到 session（调试用）
                         activity.updateSession {
-                            it.copy(llmFormattedInput = llmResult.formattedInput)
+                            it.copy(
+                                llmFormattedInput = llmResult.formattedInput,
+                                rawApiResponse = llmResult.rawApiResponse
+                            )
                         }
                         Log.d(TAG, "LLM result: drugName=[${finalParsed.drugName}]")
                     }

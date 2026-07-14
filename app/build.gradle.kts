@@ -73,6 +73,8 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.5")
 
     testImplementation(libs.junit)
+    // org.json 在 Android 上内置，但 local JUnit 需要单独依赖
+    testImplementation("org.json:json:20231013")
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }

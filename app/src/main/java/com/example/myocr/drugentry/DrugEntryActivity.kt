@@ -41,17 +41,57 @@ class DrugEntryActivity : AppCompatActivity() {
     companion object {
         private const val PREFS_NAME = "drug_entry_prefs"
         private const val KEY_DEEPSEEK_API_KEY = "deepseek_api_key"
-        private const val KEY_LLM_ENABLED = "llm_enhancement_enabled"
     }
 
-    // ==================== DeepSeek API Key 管理 ====================
+    // ==================== DeepSeek API Key & LLM 配置 ====================
 
     /**
-     * 获取 DeepSeek API key（从 SharedPreferences）
+     * 从配置文件读取 LLM 配置属性
+     */
+    private val llmConfig: java.util.Properties by lazy {
+        java.util.Properties().apply {
+            try {
+                assets.open("llm_config.properties").use { input ->
+                    load(input)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("DrugEntryActivity", "llm_config.properties not found in assets", e)
+            }
+        }
+    }
+
+    /**
+     * 获取 DeepSeek API key
+     *
+     * 优先返回 SharedPreferences 中的值（用户通过 UI 设置），
+     * 为空时回退到 assets/llm_config.properties
      */
     fun getDeepSeekApiKey(): String {
-        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefsKey = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_DEEPSEEK_API_KEY, "") ?: ""
+        if (prefsKey.isNotBlank()) return prefsKey
+        return llmConfig.getProperty("deepseek_api_key", "")
+    }
+
+    /**
+     * 获取 LLM 模型名称
+     */
+    fun getLlmModel(): String {
+        return llmConfig.getProperty("deepseek_model", "deepseek-v4-flash")
+    }
+
+    /**
+     * 获取 LLM API URL
+     */
+    fun getLlmApiUrl(): String {
+        return llmConfig.getProperty("deepseek_api_url", "https://api.deepseek.com/chat/completions")
+    }
+
+    /**
+     * 获取 LLM 请求超时（毫秒）
+     */
+    fun getLlmTimeoutMs(): Int {
+        return llmConfig.getProperty("deepseek_timeout_ms", "30000").toIntOrNull() ?: 30000
     }
 
     /**
@@ -67,31 +107,21 @@ class DrugEntryActivity : AppCompatActivity() {
     }
 
     /**
-     * 获取 LLM 增强是否启用
-     */
-    fun isLlmEnabled(): Boolean {
-        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_LLM_ENABLED, false)
-    }
-
-    /**
-     * 设置 LLM 增强开关
-     */
-    fun setLlmEnabled(enabled: Boolean) {
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_LLM_ENABLED, enabled)
-            .apply()
-    }
-
-    /**
-     * 获取 DeepSeek 客户端（有 key 且启用时才创建）
+     * 获取 DeepSeek 客户端（有 key 时才创建）
      */
     fun getDeepSeekClient(): DeepSeekClient? {
         val key = getDeepSeekApiKey()
-        if (key.isBlank() || !isLlmEnabled()) return null
+        if (key.isBlank()) return null
         if (deepSeekClient == null) {
-            deepSeekClient = DeepSeekClient(key, promptManager)
+            deepSeekClient = DeepSeekClient(
+                apiKey = key,
+                promptManager = promptManager,
+                config = DeepSeekClient.LlmConfig(
+                    apiUrl = getLlmApiUrl(),
+                    model = getLlmModel(),
+                    timeoutMs = getLlmTimeoutMs()
+                )
+            )
         }
         return deepSeekClient
     }
@@ -114,7 +144,6 @@ class DrugEntryActivity : AppCompatActivity() {
             .setPositiveButton("保存") { _, _ ->
                 val key = input.text?.toString()?.trim() ?: ""
                 saveDeepSeekApiKey(key)
-                setLlmEnabled(key.isNotBlank())
             }
             .setNegativeButton("取消", null)
             .show()

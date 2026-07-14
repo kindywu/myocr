@@ -1,0 +1,147 @@
+========================================
+  测试案例: 案例4 - 有效期字段（手机实测 - 奥美拉唑）
+  时间: 2026-07-14 18:29:36
+========================================
+
+OCR 原文行数: 11
+语音输入: 
+
+===== 药品名称 =====
+【发送给 LLM 的 system prompt】
+你是一个药品信息提取助手。从 OCR 识别文本中提取药品名称（drugName）。
+
+药品名称必须是药品的真正名称，如「阿莫西林胶囊」「布洛芬缓释片」。
+
+提取规则：
+- OCR 识别可能产生错字、漏字、乱码，请根据上下文和药品常识推断正确名称
+- 如果存在语音输入，可作为参考但不是唯一依据
+- ❌ 不是药名的例子：「国药准字」「批准文号」
+
+当 OCR 文本明显变形时，根据剂量用法（如"整粒吞服"→ 胶囊）、适应症、厂家名称推断。
+
+输出格式：
+```json
+{"drugName": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，返回纯 JSON。
+【发送给 LLM 的 user message】
+OCR识别文本：
+行 1 | 060A-21-250305
+行 2 | 产品批号:
+行 3 | |生产日期
+行 4 | 0602504203
+行 5 | 2025.04.05
+行 6 | 有效期至2027.04.04
+从以上信息，提取药品名称。
+【LLM 原始响应 JSON】
+{"id":"0e93c88e-77af-415f-8220-24aff0b2d807","object":"chat.completion","created":1784024969,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"{\"drugName\": {\"candidates\": []}}","reasoning_content":"我们分析OCR文本：主要信息是批号、生产日期、有效期，没有直接药品名称。需要推断？似乎没有药品名称。所以candidates应为空。"},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":280,"completion_tokens":46,"total_tokens":326,"prompt_tokens_details":{"cached_tokens":256},"completion_tokens_details":{"reasoning_tokens":35},"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":24},"system_fingerprint":"fp_8b330d02d0_prod0820_fp8_kvcache_20260402"}
+【LLM 返回 content（格式化）】
+{"drugName": {"candidates": []}}
+
+===== 有效期 =====
+【发送给 LLM 的 system prompt】
+你是一个药品信息提取助手。从 OCR 识别文本中提取有效期（expiryDate）。
+
+有效期格式：yyyy-MM 或 yyyy-MM-dd（如 2026-09 或 2026-09-15）。
+
+提取规则：
+- 优先寻找标注「有效期至」「有效期」「EXP」「失效期」后面的日期
+- OCR 可能将分隔符识别为点(.)、斜杠(/)、中文句号，统一转为横杠(-)
+- 如果只有「生产日期」+「保质期 X 年/月」，需推算：有效期 = 生产日期 + 保质期
+- 如果日期不完整，根据常见有效期规律推算完整日期
+
+输出格式：
+```json
+{"expiryDate": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，返回纯 JSON。
+【发送给 LLM 的 user message】
+OCR识别文本：
+行 1 | 060A-21-250305
+行 2 | 产品批号:
+行 3 | |生产日期
+行 4 | 0602504203
+行 5 | 2025.04.05
+行 6 | 有效期至2027.04.04
+从以上信息，提取药品有效期。
+【LLM 原始响应 JSON】
+{"id":"73121d1f-2b5a-4b5d-9d78-eda5e0dcab7c","object":"chat.completion","created":1784024970,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"{\"expiryDate\": {\"candidates\": [{\"value\": \"2027-04-04\", \"confidence\": 1.0, \"reason\": \"文本第6行明确标注'有效期至2027.04.04'，日期格式规范。\"}]}}","reasoning_content":"我们分析文本：行6明确有\"有效期至2027.04.04\"，日期2027.04.04应转为2027-04-04。行5是生产日期2025.04.05，但不需要推算。直接提取。"},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":294,"completion_tokens":110,"total_tokens":404,"prompt_tokens_details":{"cached_tokens":256},"completion_tokens_details":{"reasoning_tokens":53},"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":38},"system_fingerprint":"fp_8b330d02d0_prod0820_fp8_kvcache_20260402"}
+【LLM 返回 content（格式化）】
+{"expiryDate": {"candidates": [{
+  "reason": "文本第6行明确标注'有效期至2027.04.04'，日期格式规范。",
+  "confidence": 1,
+  "value": "2027-04-04"
+}]}}
+
+===== 生产厂家 =====
+【发送给 LLM 的 system prompt】
+你是一个药品信息提取助手。从 OCR 识别文本中提取生产厂家（manufacturer）。
+
+生产厂家通常包含「有限公司」「制药」「药业」「生物」等关键词。
+
+提取规则：
+- 优先寻找标注「生产企业」「生产单位」「厂家」「Manufacturer」后面的名称
+- ❌ 只提取生产企业本身，不要提取经销商、代理商名称
+- 当 OCR 文本变形时，根据常见药品企业名称推断
+
+输出格式：
+```json
+{"manufacturer": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，返回纯 JSON。
+【发送给 LLM 的 user message】
+OCR识别文本：
+行 1 | 060A-21-250305
+行 2 | 产品批号:
+行 3 | |生产日期
+行 4 | 0602504203
+行 5 | 2025.04.05
+行 6 | 有效期至2027.04.04
+从以上信息，提取药品生产厂家。
+【LLM 原始响应 JSON】
+{"id":"e07b299c-e19b-403c-a2cb-5d38edd72651","object":"chat.completion","created":1784024972,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"{\"manufacturer\": {\"candidates\": []}}","reasoning_content":"我们分析OCR文本：没有出现任何生产厂家信息。文本只有产品批号、生产日期、有效期。因此无法确定生产厂家，返回空candidates。"},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":240,"completion_tokens":45,"total_tokens":285,"prompt_tokens_details":{"cached_tokens":128},"completion_tokens_details":{"reasoning_tokens":34},"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":112},"system_fingerprint":"fp_8b330d02d0_prod0820_fp8_kvcache_20260402"}
+【LLM 返回 content（格式化）】
+{"manufacturer": {"candidates": []}}
+
+===== 批号/注册号 =====
+【发送给 LLM 的 system prompt】
+你是一个药品信息提取助手。从 OCR 识别文本中提取批号/注册号（batchNumber）。
+
+包含两种类型：
+1. 批准文号：格式如「国药准字H20093069」，特征是「国药准字」「批准文号」「注册证号」开头
+2. 生产批号：批次追溯编号，标注为「批号」「Lot」「Batch No.」
+
+提取规则：
+- 优先提取明确标注了「批准文号」或「批号」标签的值
+- 如果两者都存在，分别作为不同候选返回，按置信度排序
+- OCR 常将「准」识别为「度」，将「H」识别为「1」「I」
+
+输出格式：
+```json
+{"batchNumber": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，返回纯 JSON。
+【发送给 LLM 的 user message】
+OCR识别文本：
+行 1 | 060A-21-250305
+行 2 | 产品批号:
+行 3 | |生产日期
+行 4 | 0602504203
+行 5 | 2025.04.05
+行 6 | 有效期至2027.04.04
+从以上信息，提取药品批号/注册号。
+【LLM 原始响应 JSON】
+{"id":"eec559ae-7313-4ac4-b2bb-45a0daf27db5","object":"chat.completion","created":1784024973,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"{\n  \"batchNumber\": {\n    \"candidates\": [\n      {\n        \"value\": \"0602504203\",\n        \"confidence\": 0.9,\n        \"reason\": \"紧邻'产品批号:'标签下方，符合批号格式\"\n      },\n      {\n        \"value\": \"060A-21-250305\",\n        \"confidence\": 0.5,\n        \"reason\": \"行首数字序列，可能为批号但无明确标签\"\n      }\n    ]\n  }\n}","reasoning_content":"我们分析文本：行1有\"060A-21-250305\"，行2说\"产品批号:\"，行4有\"0602504203\"。可能批号在行4，但行1也有数字。注意\"产品批号:\"后面可能有值，但OCR可能错位。行4的\"0602504203\"可能是批号。行1的\"060A-21-250305\"也可能是。需要根据规则：优先提取明确标注了「批号」标签的值。行2有\"产品批号:\"，但后面没有直接跟着值，而是换行。行4的\"0602504203\"可能是批号值。行1可能是另一个编号。考虑提取两个候选？注意行1没有标签。我们以行2的标签为准，批号可能是行4。但行1也有类似批号格式。提取最可能的一个。这里行4更接近\"产品批号:\"的下一行。所以value=\"0602504203\"，confidence较高。同时行1的\"060A-21-250305\"也可以作为候选，但置信度较低。输出格式：candidates数组。"},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":303,"completion_tokens":346,"total_tokens":649,"prompt_tokens_details":{"cached_tokens":256},"completion_tokens_details":{"reasoning_tokens":239},"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":47},"system_fingerprint":"fp_8b330d02d0_prod0820_fp8_kvcache_20260402"}
+【LLM 返回 content（格式化）】
+{"batchNumber": {"candidates": [
+  {
+    "reason": "紧邻'产品批号:'标签下方，符合批号格式",
+    "confidence": 0.9,
+    "value": "0602504203"
+  },
+  {
+    "reason": "行首数字序列，可能为批号但无明确标签",
+    "confidence": 0.5,
+    "value": "060A-21-250305"
+  }
+]}}

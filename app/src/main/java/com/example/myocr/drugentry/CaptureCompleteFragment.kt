@@ -311,54 +311,42 @@ class CaptureCompleteFragment : Fragment() {
     }
 
     /**
-     * 显示 OCR 调试对话框：OCR 原文 + 语音输入 + LLM 候选
+     * 显示 OCR 调试对话框：展示可直接复制的原始数据（OCR 原文、API 响应）
      */
     private fun showOcrDebugDialog(activity: DrugEntryActivity) {
         val session = activity.session
-        val rawText = session.rawOcrText.ifBlank { "(无 OCR 原文)" }
+        val rawText = session.rawOcrText
 
         val sb = StringBuilder()
-        sb.append("━━━ OCR 原始文本 ━━━\n")
-        sb.append(rawText.take(800))
-        if (rawText.length > 800) sb.append("\n…(截断)")
-        sb.append("\n\n")
 
-        if (session.voiceInputDrugName.isNotBlank()) {
-            sb.append("━━━ 用户语音输入 ━━━\n")
-            sb.append(session.voiceInputDrugName).append("\n\n")
+        if (rawText.isNotBlank()) {
+            sb.append("━━━ OCR 原始文本 ━━━\n")
+            sb.append(rawText)
+        } else {
+            sb.append("(无 OCR 原文)")
         }
 
-        // 传给 LLM 的完整输入
-        if (session.llmFormattedInput.isNotBlank()) {
-            sb.append("━━━ 发送给 LLM 的完整输入 ━━━\n")
-            sb.append(session.llmFormattedInput.take(1000))
-            if (session.llmFormattedInput.length > 1000) sb.append("\n…(截断)")
-            sb.append("\n\n")
-        }
+        // LLM 原始响应（调试用）
+        val apiResponse = session.rawApiResponse
+        if (apiResponse.isNotBlank()) {
+            sb.append("\n\n━━━ LLM 原始响应 ━━━\n")
+            // 提取内层 content（LLM 返回的纯 JSON）
+            val innerContent = try {
+                org.json.JSONObject(apiResponse)
+                    .getJSONArray("choices")
+                    .getJSONObject(0)
+                    .getJSONObject("message")
+                    .getString("content")
+            } catch (e: Exception) { null }
 
-        // 最终填到表单的值
-        val finalInfo = session.drugInfo
-        sb.append("━━━ 当前表单值 ━━━\n")
-        sb.append("药品名称: ").append(finalInfo.drugName.ifBlank { "(空)" }).append("\n")
-        sb.append("有效期:   ").append(finalInfo.expiryDate.ifBlank { "(空)" }).append("\n")
-        sb.append("生产厂家: ").append(finalInfo.manufacturer.ifBlank { "(空)" }).append("\n")
-        sb.append("批号:     ").append(finalInfo.batchNumber.ifBlank { "(空)" }).append("\n")
-        sb.append("（正则解析已禁用，字段由 LLM 直接提取）\n")
-
-        // LLM 候选
-        if (session.llmCandidates.isNotEmpty()) {
-            sb.append("\n━━━ LLM 候选 ━━━\n")
-            for ((fieldKey, fieldCandidates) in session.llmCandidates) {
-                val label = getFieldLabel(fieldKey)
-                if (fieldCandidates.candidates.isNotEmpty()) {
-                    sb.append("$label:\n")
-                    for (c in fieldCandidates.candidates) {
-                        sb.append("  · ${c.value} (${(c.confidence * 100).toInt()}%")
-                        if (c.reason.isNotBlank()) sb.append(", ${c.reason}")
-                        sb.append(")\n")
-                    }
-                }
+            if (innerContent != null) {
+                sb.append(innerContent)
+            } else {
+                sb.append("(解析失败)\n")
+                sb.append(apiResponse.take(500))
             }
+        } else {
+            sb.append("\n\n(无 LLM 响应——API 未被调用或失败)")
         }
 
         val message = sb.toString()
@@ -367,7 +355,7 @@ class CaptureCompleteFragment : Fragment() {
         val scrollView = android.widget.ScrollView(requireContext())
         val textView = android.widget.TextView(requireContext()).apply {
             this.text = message
-            textSize = 12f
+            textSize = 11f
             typeface = android.graphics.Typeface.MONOSPACE
             setLineSpacing(4f, 1f)
             setPadding(24, 16, 24, 16)

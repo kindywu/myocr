@@ -1,0 +1,192 @@
+========================================
+  测试案例: 案例3 - 全字段提取（手机实测 - 奥美拉唑）
+  时间: 2026-07-14 18:29:45
+========================================
+
+OCR 原文行数: 29
+语音输入: 奥美拉唑
+
+===== 药品名称 =====
+【发送给 LLM 的 system prompt】
+你是一个药品信息提取助手。从 OCR 识别文本中提取药品名称（drugName）。
+
+药品名称必须是药品的真正名称，如「阿莫西林胶囊」「布洛芬缓释片」。
+
+提取规则：
+- OCR 识别可能产生错字、漏字、乱码，请根据上下文和药品常识推断正确名称
+- 如果存在语音输入，可作为参考但不是唯一依据
+- ❌ 不是药名的例子：「国药准字」「批准文号」
+
+当 OCR 文本明显变形时，根据剂量用法（如"整粒吞服"→ 胶囊）、适应症、厂家名称推断。
+
+输出格式：
+```json
+{"drugName": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，返回纯 JSON。
+【发送给 LLM 的 user message】
+OCR识别文本：
+行 1 | 「产品北
+行 2 | OoOらC2C3
+行 3 | O60A-21-2503O5
+行 4 | 欧意。
+行 5 | 奥美拉唑溶肢真,
+行 6 | 请仔婚阅读说书井按说明使用或在药师指导下购头利他H
+行 7 | 【用法用量】口服。成人,一次道,一日次(每24小吋),用温开水送
+行 8 | 国药准字H2046431 0
+行 9 | 本品心须整粒吞服, ,不可咀屬或压碎更不可将本品氏碎于食物.
+行 10 | 【成份]、【性状】、 【不良反应】、 【禁忌】、【注意事项)等洋见说
+行 11 | 【适应症】!用于胃酸过多引起的烧心和反酸症状的短期线。
+行 12 | C藏】遮光,密封,在干燥处保存。
+行 13 | 品上市许可持有人:
+行 14 | 台的集团欧意药业有限公司
+行 15 | |企业:石药集团欧意药业有限公可
+用户语音输入文本：
+奥美拉唑
+
+从以上信息，提取药品名称。
+【LLM 原始响应 JSON】
+{"id":"3f83ecf2-b55f-49e6-9f49-0f32f4d21851","object":"chat.completion","created":1784024976,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"{\n  \"drugName\": {\n    \"candidates\": [\n      {\n        \"value\": \"奥美拉唑肠溶胶囊\",\n        \"confidence\": 0.95,\n        \"reason\": \"OCR文本包含'奥美拉唑溶肢真'，结合适应症和用法'整粒吞服'表明是肠溶胶囊剂型，用户语音输入'奥美拉唑'支持。\"\n      }\n    ]\n  }\n}","reasoning_content":"我们根据OCR文本和语音输入，推断药品名称。文本第5行有\"奥美拉唑溶肢真\"，结合用户语音\"奥美拉唑\"，以及适应症和用法（整粒吞服，是胶囊剂型），应提取为\"奥美拉唑肠溶胶囊\"。注意：\"溶肢真\"可能是\"肠溶胶囊\"的识别错误。此外，第1行\"产品北\"可能是\"产品名称\"的残缺。综合判断，药品名称是奥美拉唑肠溶胶囊。"},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":484,"completion_tokens":204,"total_tokens":688,"prompt_tokens_details":{"cached_tokens":384},"completion_tokens_details":{"reasoning_tokens":110},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":100},"system_fingerprint":"fp_8b330d02d0_prod0820_fp8_kvcache_20260402"}
+【LLM 返回 content（格式化）】
+{"drugName": {"candidates": [{
+  "reason": "OCR文本包含'奥美拉唑溶肢真'，结合适应症和用法'整粒吞服'表明是肠溶胶囊剂型，用户语音输入'奥美拉唑'支持。",
+  "confidence": 0.95,
+  "value": "奥美拉唑肠溶胶囊"
+}]}}
+
+===== 有效期 =====
+【发送给 LLM 的 system prompt】
+你是一个药品信息提取助手。从 OCR 识别文本中提取有效期（expiryDate）。
+
+有效期格式：yyyy-MM 或 yyyy-MM-dd（如 2026-09 或 2026-09-15）。
+
+提取规则：
+- 优先寻找标注「有效期至」「有效期」「EXP」「失效期」后面的日期
+- OCR 可能将分隔符识别为点(.)、斜杠(/)、中文句号，统一转为横杠(-)
+- 如果只有「生产日期」+「保质期 X 年/月」，需推算：有效期 = 生产日期 + 保质期
+- 如果日期不完整，根据常见有效期规律推算完整日期
+
+输出格式：
+```json
+{"expiryDate": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，返回纯 JSON。
+【发送给 LLM 的 user message】
+OCR识别文本：
+行 1 | 「产品北
+行 2 | OoOらC2C3
+行 3 | O60A-21-2503O5
+行 4 | 欧意。
+行 5 | 奥美拉唑溶肢真,
+行 6 | 请仔婚阅读说书井按说明使用或在药师指导下购头利他H
+行 7 | 【用法用量】口服。成人,一次道,一日次(每24小吋),用温开水送
+行 8 | 国药准字H2046431 0
+行 9 | 本品心须整粒吞服, ,不可咀屬或压碎更不可将本品氏碎于食物.
+行 10 | 【成份]、【性状】、 【不良反应】、 【禁忌】、【注意事项)等洋见说
+行 11 | 【适应症】!用于胃酸过多引起的烧心和反酸症状的短期线。
+行 12 | C藏】遮光,密封,在干燥处保存。
+行 13 | 品上市许可持有人:
+行 14 | 台的集团欧意药业有限公司
+行 15 | |企业:石药集团欧意药业有限公可
+用户语音输入文本：
+奥美拉唑
+
+从以上信息，提取药品有效期。
+【LLM 原始响应 JSON】
+{"id":"1a789e27-24f7-4ad9-854e-7a5d88d2f4bf","object":"chat.completion","created":1784024978,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"{\"expiryDate\": {\"candidates\": []}}","reasoning_content":"我们分析文本：第3行有\"O60A-21-2503O5\"，可能是批号或日期？但看起来像\"60A-21-250305\"，可能是生产日期？但格式不标准。文本中没有明确的有效期信息。用户语音输入\"奥美拉唑\"只是药品名。因此无法提取有效日期。返回空candidates。"},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":498,"completion_tokens":90,"total_tokens":588,"prompt_tokens_details":{"cached_tokens":384},"completion_tokens_details":{"reasoning_tokens":78},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":114},"system_fingerprint":"fp_8b330d02d0_prod0820_fp8_kvcache_20260402"}
+【LLM 返回 content（格式化）】
+{"expiryDate": {"candidates": []}}
+
+===== 生产厂家 =====
+【发送给 LLM 的 system prompt】
+你是一个药品信息提取助手。从 OCR 识别文本中提取生产厂家（manufacturer）。
+
+生产厂家通常包含「有限公司」「制药」「药业」「生物」等关键词。
+
+提取规则：
+- 优先寻找标注「生产企业」「生产单位」「厂家」「Manufacturer」后面的名称
+- ❌ 只提取生产企业本身，不要提取经销商、代理商名称
+- 当 OCR 文本变形时，根据常见药品企业名称推断
+
+输出格式：
+```json
+{"manufacturer": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，返回纯 JSON。
+【发送给 LLM 的 user message】
+OCR识别文本：
+行 1 | 「产品北
+行 2 | OoOらC2C3
+行 3 | O60A-21-2503O5
+行 4 | 欧意。
+行 5 | 奥美拉唑溶肢真,
+行 6 | 请仔婚阅读说书井按说明使用或在药师指导下购头利他H
+行 7 | 【用法用量】口服。成人,一次道,一日次(每24小吋),用温开水送
+行 8 | 国药准字H2046431 0
+行 9 | 本品心须整粒吞服, ,不可咀屬或压碎更不可将本品氏碎于食物.
+行 10 | 【成份]、【性状】、 【不良反应】、 【禁忌】、【注意事项)等洋见说
+行 11 | 【适应症】!用于胃酸过多引起的烧心和反酸症状的短期线。
+行 12 | C藏】遮光,密封,在干燥处保存。
+行 13 | 品上市许可持有人:
+行 14 | 台的集团欧意药业有限公司
+行 15 | |企业:石药集团欧意药业有限公可
+用户语音输入文本：
+奥美拉唑
+
+从以上信息，提取药品生产厂家。
+【LLM 原始响应 JSON】
+{"id":"dec5b161-4a0b-4c1e-bc65-de96a5b766b0","object":"chat.completion","created":1784024980,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"{\"manufacturer\": {\"candidates\": [{\"value\": \"石药集团欧意药业有限公司\", \"confidence\": 0.95, \"reason\": \"OCR文本中行14和行15提及'台的集团欧意药业有限公司'和'企业:石药集团欧意药业有限公可'，结合常见药品企业名称推断为'石药集团欧意药业有限公司'。\"}]}}","reasoning_content":"我们根据OCR文本，行14和行15显示“台的集团欧意药业有限公司”和“企业:石药集团欧意药业有限公可”，推断应为“石药集团欧意药业有限公司”。注意OCR有错别字如“台的”应为“石药”，“有限公可”应为“有限公司”。因此生产厂家是石药集团欧意药业有限公司。"},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":444,"completion_tokens":164,"total_tokens":608,"prompt_tokens_details":{"cached_tokens":384},"completion_tokens_details":{"reasoning_tokens":79},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":60},"system_fingerprint":"fp_8b330d02d0_prod0820_fp8_kvcache_20260402"}
+【LLM 返回 content（格式化）】
+{"manufacturer": {"candidates": [{
+  "reason": "OCR文本中行14和行15提及'台的集团欧意药业有限公司'和'企业:石药集团欧意药业有限公可'，结合常见药品企业名称推断为'石药集团欧意药业有限公司'。",
+  "confidence": 0.95,
+  "value": "石药集团欧意药业有限公司"
+}]}}
+
+===== 批号/注册号 =====
+【发送给 LLM 的 system prompt】
+你是一个药品信息提取助手。从 OCR 识别文本中提取批号/注册号（batchNumber）。
+
+包含两种类型：
+1. 批准文号：格式如「国药准字H20093069」，特征是「国药准字」「批准文号」「注册证号」开头
+2. 生产批号：批次追溯编号，标注为「批号」「Lot」「Batch No.」
+
+提取规则：
+- 优先提取明确标注了「批准文号」或「批号」标签的值
+- 如果两者都存在，分别作为不同候选返回，按置信度排序
+- OCR 常将「准」识别为「度」，将「H」识别为「1」「I」
+
+输出格式：
+```json
+{"batchNumber": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，返回纯 JSON。
+【发送给 LLM 的 user message】
+OCR识别文本：
+行 1 | 「产品北
+行 2 | OoOらC2C3
+行 3 | O60A-21-2503O5
+行 4 | 欧意。
+行 5 | 奥美拉唑溶肢真,
+行 6 | 请仔婚阅读说书井按说明使用或在药师指导下购头利他H
+行 7 | 【用法用量】口服。成人,一次道,一日次(每24小吋),用温开水送
+行 8 | 国药准字H2046431 0
+行 9 | 本品心须整粒吞服, ,不可咀屬或压碎更不可将本品氏碎于食物.
+行 10 | 【成份]、【性状】、 【不良反应】、 【禁忌】、【注意事项)等洋见说
+行 11 | 【适应症】!用于胃酸过多引起的烧心和反酸症状的短期线。
+行 12 | C藏】遮光,密封,在干燥处保存。
+行 13 | 品上市许可持有人:
+行 14 | 台的集团欧意药业有限公司
+行 15 | |企业:石药集团欧意药业有限公可
+用户语音输入文本：
+奥美拉唑
+
+从以上信息，提取药品批号/注册号。
+【LLM 原始响应 JSON】
+{"id":"b3be99c8-1eb5-4ae0-8f8a-050d8cd3c3d1","object":"chat.completion","created":1784024982,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"{\n  \"batchNumber\": {\n    \"candidates\": [\n      {\n        \"value\": \"国药准字H2046431 0\",\n        \"confidence\": 0.8,\n        \"reason\": \"OCR文本第8行明确标注'国药准字'，但数字可能因OCR识别有误，实际可能是H20093069之类的格式。\"\n      }\n    ]\n  }\n}","reasoning_content":"我们分析OCR文本：第8行有\"国药准字H2046431 0\"，注意\"国药准字\"后跟\"H2046431 0\"，可能正确是\"H20093069\"？但这里是\"H2046431 0\"，需要提取。另外，第3行有\"O60A-21-2503O5\"，可能是一个批号？但格式不明确。优先提取批准文号，即\"国药准字H2046431 0\"，但数字可能有问题。根据规则，OCR常将H识别为1或I，这里\"H2046431 0\"可能实际上是\"H20093069\"? 但不确定。我们按原文提取。所以候选人：国药准字H2046431 0。但注意有空格，可能实际是\"H20464310\"？OCR文本是\"国药准字H2046431 0\"，我们取\"国药准字H2046431 0\"。另外，第3行\"O60A-21-2503O5\"看起来像生产批号，但前缀\"O60A\"可能？有时批号如\"2021-2503\"等。但在没有明确标签\"批号\"的情况下，优先批准文号。用户语音输入\"奥美拉唑\"只是药品名。所以输出批准文号。\n\n注意：只输出json。"},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":507,"completion_tokens":375,"total_tokens":882,"prompt_tokens_details":{"cached_tokens":384},"completion_tokens_details":{"reasoning_tokens":289},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":123},"system_fingerprint":"fp_8b330d02d0_prod0820_fp8_kvcache_20260402"}
+【LLM 返回 content（格式化）】
+{"batchNumber": {"candidates": [{
+  "reason": "OCR文本第8行明确标注'国药准字'，但数字可能因OCR识别有误，实际可能是H20093069之类的格式。",
+  "confidence": 0.8,
+  "value": "国药准字H2046431 0"
+}]}}
