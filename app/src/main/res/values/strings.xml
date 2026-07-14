@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">MyOCR</string>
+    <string name="capture">拍照识别</string>
+    <string name="ocr_result_title">识别结果</string>
+    <string name="ocr_processing">正在识别…</string>
+    <string name="copy">复制</string>
+    <string name="copied">已复制</string>
+    <string name="switch_camera">切换摄像头</string>
+    <string name="pick_gallery">从相册选择</string>
+    <string name="camera_permission_denied">需要相机权限才能扫描文字</string>
+    <string name="camera_permission_rationale">请授予相机权限以使用文字识别功能</string>
+    <string name="ocr_error">识别失败，请重试</string>
+    <string name="no_text_found">未识别到文字</string>
+    <string name="ocr_init">正在加载 OCR 引擎…</string>
+    <string name="ocr_init_failed">OCR 引擎加载失败</string>
+    <string name="server_label">服务器</string>
+    <string name="server_hint">输入电脑 IP:端口，如 192.168.1.100:8080</string>
+    <string name="upload">上传</string>
+    <string name="uploading">上传中…</string>
+    <string name="upload_ok">上传成功 ✓</string>
+    <string name="upload_fail">上传失败</string>
+    <string name="save_server">保存</string>
+    <string name="speak">朗读</string>
+    <string name="stop">停止</string>
+    <string name="tts_not_ready">语音引擎未就绪</string>
+</resources>
