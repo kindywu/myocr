@@ -38,7 +38,7 @@
     <string name="capture_retake">重拍</string>
 
     <!-- 多角度补全 -->
-    <string name="completion_title">视频采集进度</string>
+    <string name="completion_title">视频采集</string>
     <string name="completion_progress">已识别 %1$d/%2$d 个字段</string>
     <string name="field_drug_name">药品名称</string>
     <string name="field_expiry_date">有效期</string>
@@ -76,6 +76,12 @@
     <!-- 通用扫描入口 -->
     <string name="general_scan">通用文字识别</string>
     <string name="general_scan_desc">拍照识文字、复制、朗读、上传到电脑</string>
+
+    <!-- 语音输入 -->
+    <string name="voice_input_prompt">请说出药品名称</string>
+    <string name="voice_input_label">语音输入</string>
+    <string name="voice_input_hint">语音输入药名</string>
+    <string name="voice_input_not_available">当前设备不支持语音输入</string>
 
     <!-- 调试 -->
     <string name="view_raw_ocr">查看识别原文 →</string>

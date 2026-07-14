@@ -1,12 +1,16 @@
 package com.example.myocr.drugentry
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -34,6 +38,9 @@ class CaptureGuideFragment : Fragment() {
     private var imageCapture: ImageCapture? = null
     private var cameraProvider: ProcessCameraProvider? = null
 
+    /** 是否使用前置摄像头 */
+    private var useFrontCamera: Boolean = false
+
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     // 使用 ActivityResultContracts 请求相机权限（modern API）
@@ -44,6 +51,18 @@ class CaptureGuideFragment : Fragment() {
             if (isAdded) startCamera()
         } else {
             if (isAdded) requireActivity().supportFragmentManager.popBackStack()
+        }
+    }
+
+    /** 语音输入结果回调 */
+    private val voiceInputLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!matches.isNullOrEmpty()) {
+                onVoiceResult(matches[0])
+            }
         }
     }
 
@@ -59,17 +78,68 @@ class CaptureGuideFragment : Fragment() {
 
         // 更新步骤指示
         binding.captureHint.text = getString(R.string.capture_front_hint)
+        binding.stepText.text = getString(R.string.capture_step, 1)
 
         // 返回
         binding.backButton.setOnClickListener {
             if (isAdded) requireActivity().supportFragmentManager.popBackStack()
         }
 
+        // 语音输入药品名称
+        binding.voiceInputButton.setOnClickListener { startVoiceInput() }
+
+        // 恢复 session 中已有的语音输入
+        val captureActivity = requireActivity() as DrugEntryActivity
+        if (captureActivity.session.voiceInputDrugName.isNotBlank()) {
+            onVoiceResult(captureActivity.session.voiceInputDrugName)
+        }
+
         // 拍照
         binding.captureButton.setOnClickListener { takePhoto() }
 
+        // 切换前后摄像头
+        binding.switchCameraButton.setOnClickListener {
+            useFrontCamera = !useFrontCamera
+            startCamera()
+        }
+
         // 启动相机（用 view.post 确保视图已就绪）
         view.post { checkCameraAndStart() }
+    }
+
+    /** 启动系统语音识别 */
+    private fun startVoiceInput() {
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                )
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, getString(R.string.voice_input_prompt))
+            }
+            voiceInputLauncher.launch(intent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(
+                requireContext(),
+                R.string.voice_input_not_available,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /** 语音识别成功后的处理 */
+    private fun onVoiceResult(spokenName: String) {
+        // 按钮变绿色表示已识别
+        binding.voiceInputButton.setBackgroundResource(R.drawable.voice_button_active)
+        // 提示文字显示识别结果
+        binding.captureHint.text = "已语音输入：$spokenName"
+
+        // 存入 session，后续传给 LLM 辅助判断
+        if (isAdded) {
+            val activity = requireActivity() as DrugEntryActivity
+            activity.updateSession { it.copy(voiceInputDrugName = spokenName) }
+        }
     }
 
     private fun checkCameraAndStart() {
@@ -108,20 +178,28 @@ class CaptureGuideFragment : Fragment() {
 
                 cameraProvider?.unbindAll()
 
-                // 尝试后摄，如果不可用则回退到前摄
-                var selectedCamera = CameraSelector.DEFAULT_BACK_CAMERA
-                val availableCameras = cameraProvider?.availableCameraInfos ?: emptyList()
-                val hasBackCamera = availableCameras.any {
-                    it.lensFacing == CameraSelector.LENS_FACING_BACK
+                // 根据用户选择切换前后摄像头
+                val selectedCamera = if (useFrontCamera) {
+                    CameraSelector.DEFAULT_FRONT_CAMERA
+                } else {
+                    CameraSelector.DEFAULT_BACK_CAMERA
                 }
-                if (!hasBackCamera) {
-                    Log.w(TAG, "No back camera, using front camera")
-                    selectedCamera = CameraSelector.DEFAULT_FRONT_CAMERA
+                // 检查目标摄像头是否可用，不可用则回退到另一个
+                val availableCameras = cameraProvider?.availableCameraInfos ?: emptyList()
+                val targetLens = if (useFrontCamera) CameraSelector.LENS_FACING_FRONT
+                    else CameraSelector.LENS_FACING_BACK
+                val hasTargetCamera = availableCameras.any {
+                    it.lensFacing == targetLens
+                }
+                val finalSelector = if (hasTargetCamera) selectedCamera else {
+                    Log.w(TAG, "Target camera not available, falling back")
+                    if (useFrontCamera) CameraSelector.DEFAULT_BACK_CAMERA
+                    else CameraSelector.DEFAULT_FRONT_CAMERA
                 }
 
                 cameraProvider?.bindToLifecycle(
                     viewLifecycleOwner,
-                    selectedCamera,
+                    finalSelector,
                     preview,
                     imageCapture
                 )

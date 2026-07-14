@@ -115,28 +115,11 @@
                     android:gravity="center_vertical"
                     android:padding="16dp">
 
-                    <ImageView
-                        android:id="@+id/drugNameIcon"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_check_circle"
-                        android:contentDescription="@string/recognized"
-                        android:visibility="gone" />
-
-                    <ImageView
-                        android:id="@+id/drugNamePending"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_camera_add"
-                        android:contentDescription="@string/pending_capture"
-                        android:visibility="visible" />
-
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="12dp">
+                        android:orientation="vertical">
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -167,6 +150,18 @@
                         android:tint="@color/brand_500"
                         android:visibility="visible" />
 
+                    <ImageButton
+                        android:id="@+id/drugNameVoice"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_marginStart="8dp"
+                        android:src="@drawable/ic_mic"
+                        android:contentDescription="@string/voice_input_label"
+                        android:background="@drawable/circle_brand_bg"
+                        android:padding="6dp"
+                        android:tint="@color/brand_500"
+                        android:visibility="visible" />
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
@@ -190,28 +185,11 @@
                     android:gravity="center_vertical"
                     android:padding="16dp">
 
-                    <ImageView
-                        android:id="@+id/expiryIcon"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_check_circle"
-                        android:contentDescription="@string/recognized"
-                        android:visibility="gone" />
-
-                    <ImageView
-                        android:id="@+id/expiryPending"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_camera_add"
-                        android:contentDescription="@string/pending_capture"
-                        android:visibility="visible" />
-
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="12dp">
+                        android:orientation="vertical">
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -240,6 +218,17 @@
                         android:padding="6dp"
                         android:tint="@color/brand_500" />
 
+                    <ImageButton
+                        android:id="@+id/expiryVoice"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_marginStart="8dp"
+                        android:src="@drawable/ic_mic"
+                        android:contentDescription="@string/voice_input_label"
+                        android:background="@drawable/circle_brand_bg"
+                        android:padding="6dp"
+                        android:tint="@color/brand_500" />
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
@@ -263,28 +252,11 @@
                     android:gravity="center_vertical"
                     android:padding="16dp">
 
-                    <ImageView
-                        android:id="@+id/manufacturerIcon"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_check_circle"
-                        android:contentDescription="@string/recognized"
-                        android:visibility="gone" />
-
-                    <ImageView
-                        android:id="@+id/manufacturerPending"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_camera_add"
-                        android:contentDescription="@string/pending_capture"
-                        android:visibility="visible" />
-
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="12dp">
+                        android:orientation="vertical">
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -313,6 +285,17 @@
                         android:padding="6dp"
                         android:tint="@color/brand_500" />
 
+                    <ImageButton
+                        android:id="@+id/manufacturerVoice"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_marginStart="8dp"
+                        android:src="@drawable/ic_mic"
+                        android:contentDescription="@string/voice_input_label"
+                        android:background="@drawable/circle_brand_bg"
+                        android:padding="6dp"
+                        android:tint="@color/brand_500" />
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
@@ -336,28 +319,11 @@
                     android:gravity="center_vertical"
                     android:padding="16dp">
 
-                    <ImageView
-                        android:id="@+id/batchIcon"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_check_circle"
-                        android:contentDescription="@string/recognized"
-                        android:visibility="gone" />
-
-                    <ImageView
-                        android:id="@+id/batchPending"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_camera_add"
-                        android:contentDescription="@string/pending_capture"
-                        android:visibility="visible" />
-
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="12dp">
+                        android:orientation="vertical">
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -382,6 +348,17 @@
                         android:layout_height="36dp"
                         android:src="@drawable/ic_capture_small"
                         android:contentDescription="@string/continue_capture"
+                        android:background="@drawable/circle_brand_bg"
+                        android:padding="6dp"
+                        android:tint="@color/brand_500" />
+
+                    <ImageButton
+                        android:id="@+id/batchVoice"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_marginStart="8dp"
+                        android:src="@drawable/ic_mic"
+                        android:contentDescription="@string/voice_input_label"
                         android:background="@drawable/circle_brand_bg"
                         android:padding="6dp"
                         android:tint="@color/brand_500" />

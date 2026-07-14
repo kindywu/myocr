@@ -35,6 +35,9 @@ class DrugEntryActivity : AppCompatActivity() {
     /** DeepSeek API 客户端（由 API key 按需创建） */
     private var deepSeekClient: DeepSeekClient? = null
 
+    /** LLM 提示词模板管理器 */
+    val promptManager: PromptManager by lazy { PromptManager(this) }
+
     companion object {
         private const val PREFS_NAME = "drug_entry_prefs"
         private const val KEY_DEEPSEEK_API_KEY = "deepseek_api_key"
@@ -88,7 +91,7 @@ class DrugEntryActivity : AppCompatActivity() {
         val key = getDeepSeekApiKey()
         if (key.isBlank() || !isLlmEnabled()) return null
         if (deepSeekClient == null) {
-            deepSeekClient = DeepSeekClient(key)
+            deepSeekClient = DeepSeekClient(key, promptManager)
         }
         return deepSeekClient
     }

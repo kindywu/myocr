@@ -163,47 +163,35 @@ class CropFragment : Fragment() {
         activity.updateSession { it.copy(rawOcrText = rawText) }
 
         if (rawText.isNotBlank()) {
-            // 1️⃣ 正则解析（始终执行，作为兜底）
-            val regexParsed = activity.drugOcrParser.parse(rawText)
+            // 1️⃣ 获取用户语音输入的药品名称（辅助 LLM）
+            val voiceInput = activity.session.voiceInputDrugName
 
-            // 2️⃣ LLM 增强解析（可选，有 API key 才走）
-            var finalParsed = regexParsed
+            // 2️⃣ LLM 解析（可选，有 API key 才走）
+            //    不再使用正则解析，完全信任 LLM 的判断
+            var finalParsed = DrugInfo()
             var finalCandidates = emptyMap<String, DeepSeekClient.FieldCandidates>()
             val llmClient = activity.getDeepSeekClient()
             if (llmClient != null) {
                 try {
-                    // 传入带位置信息的 OcrLine，LLM 能看到每行在包装上的垂直位置
-                    val llmResult = llmClient.extractDrugInfo(rawText, ocrLines)
+                    val llmResult = llmClient.extractDrugInfo(rawText, ocrLines, voiceInput)
                     if (llmResult.success) {
                         finalCandidates = llmResult.allCandidates
-
-                        // 逐字段择优合并：
-                        // LLM 结果的某字段通过了正则验证 → 使用 LLM 结果
-                        // LLM 结果的某字段未通过正则验证（如把批准文号当药名）→ fallback 到正则
-                        val merged = DrugInfo(
-                            drugName = if (DrugOcrParser.isValidDrugName(llmResult.drugInfo.drugName))
-                                llmResult.drugInfo.drugName
-                            else regexParsed.drugName,
-                            expiryDate = if (DrugOcrParser.isValidExpiryDate(llmResult.drugInfo.expiryDate))
-                                llmResult.drugInfo.expiryDate
-                            else regexParsed.expiryDate,
-                            manufacturer = if (DrugOcrParser.isValidManufacturer(llmResult.drugInfo.manufacturer))
-                                llmResult.drugInfo.manufacturer
-                            else regexParsed.manufacturer,
-                            batchNumber = if (DrugOcrParser.isValidBatchNumber(llmResult.drugInfo.batchNumber))
-                                llmResult.drugInfo.batchNumber
-                            else regexParsed.batchNumber
-                        )
-                        finalParsed = merged
-                        Log.d(TAG, "Merged: LLM + regex, drugName=[${merged.drugName}]")
+                        finalParsed = llmResult.drugInfo
+                        // 保存完整 LLM 输入到 session（调试用）
+                        activity.updateSession {
+                            it.copy(llmFormattedInput = llmResult.formattedInput)
+                        }
+                        Log.d(TAG, "LLM result: drugName=[${finalParsed.drugName}]")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "LLM failed, using regex only", e)
+                    Log.e(TAG, "LLM failed, fields left empty for manual fill", e)
                 }
             }
 
-            // 3️⃣ 更新 session（药品信息 + 多候选）
-            activity.updateDrugInfo(finalParsed, FieldStatus.RECOGNIZED)
+            // 3️⃣ 更新 session（仅 LLM 有结果时才写入，否则留给用户手动填写）
+            if (finalParsed.drugName.isNotBlank() || finalParsed.hasAnyValue) {
+                activity.updateDrugInfo(finalParsed, FieldStatus.RECOGNIZED)
+            }
             if (finalCandidates.isNotEmpty()) {
                 activity.setLlmCandidates(finalCandidates)
             }

@@ -55,6 +55,12 @@ data class DrugEntrySession(
     /** 待裁剪的照片路径（拍照后先裁剪再 OCR） */
     val pendingPhotoPath: String = "",
 
+    /** 用户语音输入的药品名称（传给 LLM 辅助判断） */
+    val voiceInputDrugName: String = "",
+
+    /** 传给 LLM 的完整输入文本（调试用） */
+    val llmFormattedInput: String = "",
+
     /** LLM 返回的多候选结果（字段 key → 候选列表，用于 UI 展示） */
     val llmCandidates: Map<String, DeepSeekClient.FieldCandidates> = emptyMap(),
 

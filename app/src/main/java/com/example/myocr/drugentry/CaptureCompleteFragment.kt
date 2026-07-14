@@ -1,9 +1,14 @@
 package com.example.myocr.drugentry
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import com.example.myocr.R
 
@@ -24,6 +29,21 @@ class CaptureCompleteFragment : Fragment() {
 
     /** 字段 key → 用户可选择的候选值列表 */
     private var selectableCandidates: Map<String, List<String>> = emptyMap()
+
+    /** 当前正在语音输入的字段 key */
+    private var voiceFieldKey: String = ""
+
+    /** 语音输入结果回调 */
+    private val voiceInputLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!matches.isNullOrEmpty()) {
+                onVoiceResult(voiceFieldKey, matches[0])
+            }
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -61,6 +81,12 @@ class CaptureCompleteFragment : Fragment() {
             activity.startRetake("batchNumber", DrugEntryStep.COMPLETION)
         }
 
+        // 语音输入：每个字段的麦克风按钮
+        binding.drugNameVoice.setOnClickListener { startVoiceInput("drugName") }
+        binding.expiryVoice.setOnClickListener { startVoiceInput("expiryDate") }
+        binding.manufacturerVoice.setOnClickListener { startVoiceInput("manufacturer") }
+        binding.batchVoice.setOnClickListener { startVoiceInput("batchNumber") }
+
         // 继续拍摄：全字段采集（可覆盖已有值）
         binding.continueCaptureButton.setOnClickListener {
             activity.startRetake(null, DrugEntryStep.COMPLETION)
@@ -91,6 +117,50 @@ class CaptureCompleteFragment : Fragment() {
         return result
     }
 
+    /** 启动系统语音识别 */
+    private fun startVoiceInput(fieldKey: String) {
+        voiceFieldKey = fieldKey
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                )
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                putExtra(
+                    RecognizerIntent.EXTRA_PROMPT,
+                    "请说出${getFieldLabel(fieldKey)}"
+                )
+            }
+            voiceInputLauncher.launch(intent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(
+                requireContext(),
+                R.string.voice_input_not_available,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /** 语音识别成功后的处理 */
+    private fun onVoiceResult(fieldKey: String, spokenText: String) {
+        val activity = requireActivity() as DrugEntryActivity
+        val current = activity.session.drugInfo
+
+        // 更新对应字段的值
+        val updated = when (fieldKey) {
+            "drugName" -> current.copy(drugName = spokenText)
+            "expiryDate" -> current.copy(expiryDate = spokenText)
+            "manufacturer" -> current.copy(manufacturer = spokenText)
+            "batchNumber" -> current.copy(batchNumber = spokenText)
+            else -> current
+        }
+        activity.updateDrugInfo(updated, FieldStatus.MANUAL)
+        // 刷新页面
+        updateFieldStatus(activity, activity.session)
+        updateProgress(activity.session)
+    }
+
     private fun updateProgress(session: DrugEntrySession) {
         val filled = session.drugInfo.filledFieldCount
         val total = DrugInfo.TOTAL_FIELDS
@@ -107,8 +177,6 @@ class CaptureCompleteFragment : Fragment() {
             fieldKey = "drugName",
             fieldValue = info.drugName,
             valueView = binding.drugNameValue,
-            iconView = binding.drugNameIcon,
-            pendingView = binding.drugNamePending,
             captureButton = binding.drugNameCapture,
             cardView = binding.drugNameCard
         )
@@ -118,8 +186,6 @@ class CaptureCompleteFragment : Fragment() {
             fieldKey = "expiryDate",
             fieldValue = info.expiryDate,
             valueView = binding.expiryValue,
-            iconView = binding.expiryIcon,
-            pendingView = binding.expiryPending,
             captureButton = binding.expiryCapture,
             cardView = binding.expiryCard
         )
@@ -129,8 +195,6 @@ class CaptureCompleteFragment : Fragment() {
             fieldKey = "manufacturer",
             fieldValue = info.manufacturer,
             valueView = binding.manufacturerValue,
-            iconView = binding.manufacturerIcon,
-            pendingView = binding.manufacturerPending,
             captureButton = binding.manufacturerCapture,
             cardView = binding.manufacturerCard
         )
@@ -140,8 +204,6 @@ class CaptureCompleteFragment : Fragment() {
             fieldKey = "batchNumber",
             fieldValue = info.batchNumber,
             valueView = binding.batchValue,
-            iconView = binding.batchIcon,
-            pendingView = binding.batchPending,
             captureButton = binding.batchCapture,
             cardView = binding.batchCard
         )
@@ -150,26 +212,21 @@ class CaptureCompleteFragment : Fragment() {
     /**
      * 更新单个字段的显示状态
      *
-     * 拍照按钮始终可见，方便用户随时纠错。
-     * 有值的字段显示绿色 ✅ 标记 + 值 + 品牌色背景
-     * 空字段显示灰色 📷 提示 + 橙色背景
-     * 如果 LLM 有多个候选，值可点击弹出选择器
+     * 有值的字段显示值 + 品牌色背景，空字段显示橙色提示背景。
+     * 如果 LLM 有多个候选，值可点击弹出选择器。
+     * 拍照和语音按钮始终可见。
      */
     private fun updateSingleField(
         activity: DrugEntryActivity,
         fieldKey: String,
         fieldValue: String,
         valueView: View,
-        iconView: View,
-        pendingView: View,
         captureButton: View,
         cardView: View
     ) {
         if (fieldValue.isNotBlank()) {
             (valueView as? android.widget.TextView)?.text = fieldValue
             valueView.visibility = View.VISIBLE
-            iconView.visibility = View.VISIBLE
-            pendingView.visibility = View.GONE
             cardView.setBackgroundResource(R.color.field_recognized_bg)
 
             // 如果 LLM 有多个候选，让值可点击切换
@@ -179,21 +236,17 @@ class CaptureCompleteFragment : Fragment() {
                 valueView.setOnClickListener {
                     showCandidatePicker(activity, fieldKey, fieldValue, candidates)
                 }
-                // 视觉提示：附带候选箭头样式（通过 setCompoundDrawables 加小箭头）
-                // 实际运行时，值文本变为可点击状态且有反馈
             } else {
                 valueView.isClickable = false
                 valueView.setOnClickListener(null)
             }
         } else {
             valueView.visibility = View.GONE
-            iconView.visibility = View.GONE
-            pendingView.visibility = View.VISIBLE
             cardView.setBackgroundResource(R.color.field_pending_bg)
             valueView.isClickable = false
             valueView.setOnClickListener(null)
         }
-        // 拍照按钮始终可见
+        // 拍照按钮和语音按钮始终可见
         captureButton.visibility = View.VISIBLE
     }
 
@@ -258,14 +311,11 @@ class CaptureCompleteFragment : Fragment() {
     }
 
     /**
-     * 显示 OCR 调试对话框：OCR 原文 + 正则解析 + LLM 候选
+     * 显示 OCR 调试对话框：OCR 原文 + 语音输入 + LLM 候选
      */
     private fun showOcrDebugDialog(activity: DrugEntryActivity) {
         val session = activity.session
         val rawText = session.rawOcrText.ifBlank { "(无 OCR 原文)" }
-
-        // 重新用正则解析一遍，展示结果
-        val regexResult = activity.drugOcrParser.parse(rawText)
 
         val sb = StringBuilder()
         sb.append("━━━ OCR 原始文本 ━━━\n")
@@ -273,12 +323,18 @@ class CaptureCompleteFragment : Fragment() {
         if (rawText.length > 800) sb.append("\n…(截断)")
         sb.append("\n\n")
 
-        sb.append("━━━ 正则解析结果 ━━━\n")
-        sb.append("药品名称: ").append(regexResult.drugName.ifBlank { "(空)" }).append("\n")
-        sb.append("有效期:   ").append(regexResult.expiryDate.ifBlank { "(空)" }).append("\n")
-        sb.append("生产厂家: ").append(regexResult.manufacturer.ifBlank { "(空)" }).append("\n")
-        sb.append("批号:     ").append(regexResult.batchNumber.ifBlank { "(空)" }).append("\n")
-        sb.append("\n")
+        if (session.voiceInputDrugName.isNotBlank()) {
+            sb.append("━━━ 用户语音输入 ━━━\n")
+            sb.append(session.voiceInputDrugName).append("\n\n")
+        }
+
+        // 传给 LLM 的完整输入
+        if (session.llmFormattedInput.isNotBlank()) {
+            sb.append("━━━ 发送给 LLM 的完整输入 ━━━\n")
+            sb.append(session.llmFormattedInput.take(1000))
+            if (session.llmFormattedInput.length > 1000) sb.append("\n…(截断)")
+            sb.append("\n\n")
+        }
 
         // 最终填到表单的值
         val finalInfo = session.drugInfo
@@ -287,6 +343,7 @@ class CaptureCompleteFragment : Fragment() {
         sb.append("有效期:   ").append(finalInfo.expiryDate.ifBlank { "(空)" }).append("\n")
         sb.append("生产厂家: ").append(finalInfo.manufacturer.ifBlank { "(空)" }).append("\n")
         sb.append("批号:     ").append(finalInfo.batchNumber.ifBlank { "(空)" }).append("\n")
+        sb.append("（正则解析已禁用，字段由 LLM 直接提取）\n")
 
         // LLM 候选
         if (session.llmCandidates.isNotEmpty()) {
