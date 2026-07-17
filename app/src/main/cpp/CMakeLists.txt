@@ -35,3 +35,9 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         # List libraries link to the target library
         android
         log)
+
+# 16 KB page size 对齐（Android 15+, Google Play 2025-11 要求）
+# 确保自己的 native 库 LOAD 段以 16 KB 边界对齐
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -Wl,-z,max-page-size=16384
+    -Wl,-z,common-page-size=16384)

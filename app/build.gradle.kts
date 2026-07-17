@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.io.File
 
 plugins {
     alias(libs.plugins.android.application)
@@ -78,6 +79,47 @@ android {
                 "META-INF/NOTICE", "META-INF/NOTICE.txt")
         }
     }
+}
+
+// ==================== 16 KB page size 对齐 ====================
+// Google Play 要求 2025-11 起，target Android 15+ 的应用必须支持 16 KB 页
+// 用 NDK llvm-objcopy 修改预编译 .so 的 section alignment（如 ONNX Runtime）
+
+fun findNdkDir16k(): File {
+    val sdkProp = Properties()
+    rootProject.file("local.properties").inputStream().use { sdkProp.load(it) }
+    val sdkPath = sdkProp.getProperty("sdk.dir").replace("\\", "/")
+    val ndkDir = File("$sdkPath/ndk")
+    val ndkFiles: Array<File>? = ndkDir.listFiles()
+    val versions: List<File> = ndkFiles?.filter { it.isDirectory }?.sortedByDescending { it.name }
+        ?: error("NDK not found in $ndkDir")
+    return versions.first()
+}
+val ndkDir_16k = findNdkDir16k()
+val buildDir_16k = layout.buildDirectory.asFile.get()
+val scriptFile_16k = File(rootProject.projectDir, "tools/realign_16kb.sh")
+
+val ndkPath_16k = ndkDir_16k.absolutePath
+val buildPath_16k = buildDir_16k.absolutePath
+val scriptPath_16k = scriptFile_16k.absolutePath
+
+// 用 Exec 任务类型，原生支持配置缓存序列化
+// Windows 路径转 POSIX（供 Git Bash 使用）
+fun winPath(p: String) = p.replace("\\", "/")
+fun posix(p: String) = "/" + p.replace("\\", "/").replace(":", "").lowercase()
+val realignTask = tasks.register<Exec>("realignDebugNativeLibs") {
+    dependsOn("mergeDebugNativeLibs")
+    // 用 Git Bash POSIX 路径 + /bin/bash（含 MSYS2 路径转换）
+    commandLine(
+        winPath("C:/Program Files/Git/bin/bash"),
+        posix(scriptPath_16k), posix(ndkPath_16k), posix(buildPath_16k)
+    )
+    isIgnoreExitValue = true
+}
+
+// packageDebug 依赖它（配置缓存安全的方式）
+tasks.matching { it.name == "packageDebug" }.configureEach {
+    dependsOn(realignTask)
 }
 
 dependencies {
