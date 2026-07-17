@@ -84,7 +84,15 @@ class DrugEntryActivity : AppCompatActivity() {
         return when (step) {
             DrugEntryStep.ENTRY -> EntryFragment()
             DrugEntryStep.CAPTURE -> CaptureGuideFragment()
-            DrugEntryStep.CROP -> CropFragment()
+            DrugEntryStep.CROP -> {
+                // 单字段重拍 → SingleFieldCropFragment（含语音补充）
+                // 全字段 OCR（首次采集或全字段重拍）→ CropFragment（无语音补充）
+                if (session.retakeFieldTarget != null) {
+                    SingleFieldCropFragment()
+                } else {
+                    CropFragment()
+                }
+            }
             DrugEntryStep.COMPLETION -> CaptureCompleteFragment()
             DrugEntryStep.CONFIRM -> ConfirmFragment()
             DrugEntryStep.MANUAL -> ManualEntryFragment()
