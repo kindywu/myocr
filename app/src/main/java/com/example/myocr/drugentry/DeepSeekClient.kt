@@ -77,8 +77,8 @@ class DeepSeekClient(
                 key = "drugName",
                 labelCn = "药品名称",
                 labelEn = "Drug Name",
-                descCn = "药品的真正通用名称，如「阿莫西林胶囊」「布洛芬缓释片」",
-                descEn = "Actual generic drug name, e.g. Amoxicillin Capsules"
+                descCn = "药品的真正通用名称，如「阿莫西林胶囊」「布洛芬缓释片」。可根据药品知识修正 OCR 拼写错误，但不得凭空编造。",
+                descEn = "Actual generic drug name, e.g. Amoxicillin Capsules. OCR errors may be corrected using drug knowledge, but must not fabricate."
             ),
             "expiryDate" to FieldDef(
                 key = "expiryDate",
@@ -199,6 +199,22 @@ class DeepSeekClient(
             }
             appendLine(COMMON_RULES)
             appendLine()
+            appendLine("## 字段特殊规则")
+            appendLine()
+            appendLine("### 药品名称（drugName）—— 允许知识修正")
+            appendLine("药品名称是公开信息，LLM 可利用对药品的了解修正 OCR 拼写错误。")
+            appendLine("例如 OCR 识别「奥美拉唑溶肢真」「奥美拉唑溶肠胶嚷」等，应结合上下文输出正确的「奥美拉唑溶肠胶囊」。")
+            appendLine("如果 OCR 文本中完全没有与药品名称相关的线索，仍应返回空 candidates，不得凭空编造。")
+            appendLine("confidence 应根据修正程度合理赋值：完全匹配 0.9+，轻度修正 0.7-0.9，较大修正 0.4-0.7。")
+            appendLine()
+            appendLine("### 批准文号（approvalNumber）—— 允许知识修正")
+            appendLine("批准文号是公开的监管编码，LLM 可利用批准文号的编码规则修正 OCR 拼写错误。")
+            appendLine("例如 OCR 识别「国药度字H20046431 0」应纠正为「国药准字H20046430」。")
+            appendLine("如果 OCR 文本中完全没有与批准文号相关的线索，仍应返回空 candidates，不得凭空编造。")
+            appendLine()
+            appendLine("### 其他字段（有效期/生产厂家/生产批号）")
+            appendLine("严格遵循上方反幻觉规则：所有值必须直接来源于 OCR 文本，不得自行编造或根据常识推断。")
+            appendLine()
             appendLine("## 输出格式")
             appendLine("严格按照以下 JSON 结构返回（每个字段为一个 key-value）：")
             appendLine("{")
@@ -213,59 +229,148 @@ class DeepSeekClient(
         }
 
         /**
-         * 从 [FIELD_DEFINITIONS] 动态构建单字段 system prompt
-         *
-         * @param fieldKey 字段 key（如 "drugName"），必须存在于 [FIELD_DEFINITIONS] 中
-         * @return 聚焦于该字段的 system prompt
+         * 单字段 system prompt —— 每个字段完全独立自包含，不共享任何规则段
          */
         fun buildSingleFieldSystemPrompt(fieldKey: String): String {
-            val def = FIELD_DEFINITIONS[fieldKey]
-                ?: throw IllegalArgumentException("未知字段 key: $fieldKey，可用: ${FIELD_DEFINITIONS.keys}")
-
-            return buildString {
-                appendLine("你是一个药品信息提取助手。根据 OCR 识别文本提取指定字段。")
-                appendLine()
-                appendLine("## 待提取字段")
-                appendLine()
-                appendLine("### ${def.labelCn}（${def.key}）")
-                appendLine(def.descCn)
-                appendLine()
-                appendLine(COMMON_RULES)
-                appendLine()
-                appendLine("## 输出格式")
-                appendLine("严格按照以下 JSON 结构返回（只包含该字段）：")
-                appendLine("{")
-                appendLine("  \"${def.key}\": {\"candidates\": [{\"value\": \"...\", \"confidence\": 0.0, \"reason\": \"...\"}]}")
-                appendLine("}")
-                appendLine("无法确定则返回空 candidates：{\"candidates\": []}")
-                appendLine("返回纯 JSON，不要包含其他文字。")
+            return when (fieldKey) {
+                "drugName" -> buildDrugNamePrompt()
+                "expiryDate" -> buildExpiryDatePrompt()
+                "manufacturer" -> buildManufacturerPrompt()
+                "approvalNumber" -> buildApprovalNumberPrompt()
+                "lotNumber" -> buildLotNumberPrompt()
+                else -> throw IllegalArgumentException("未知字段 key: $fieldKey")
             }
         }
 
+        private fun buildDrugNamePrompt(): String = """
+你是一个药品信息提取助手。从 OCR 识别文本中提取药品名称。
+
+药品名称必须是药品的真正通用名称，如「阿莫西林胶囊」「布洛芬缓释片」。
+
+规则：
+- OCR 识别可能产生错字、漏字、乱码，可根据药品知识修正 OCR 拼写错误
+- 例如 OCR 识别「奥美拉唑溶肢真」「奥美拉唑溶肠胶嚷」等，应结合上下文输出正确的「奥美拉唑肠溶胶囊」
+- 如果存在语音输入，可作为参考但不是唯一依据
+- ❌ OCR 文本中没有提到任何药名时，返回空 candidates，不得编造
+- 每条候选带 confidence（0~1）：完全匹配 0.9+，轻度修正 0.7-0.9，较大修正 0.4-0.7
+
+输出格式：
+```json
+{"drugName": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，只返回 JSON。
+""".trimIndent()
+
+        private fun buildExpiryDatePrompt(): String = """
+你是一个药品信息提取助手。从 OCR 识别文本中提取有效期至。
+
+有效期格式：yyyy-MM 或 yyyy-MM-dd（如 2026-09 或 2026-09-15）。
+
+规则：
+- 优先寻找标注「有效期至」「有效期」「EXP」「失效期」后面的日期
+- OCR 可能将分隔符识别为点(.)、斜杠(/)、中文句号，统一转为横杠(-)
+- 如果只有「生产日期」+「保质期 X 年/月」，可以计算：有效期 = 生产日期 + 保质期
+  （前提是两个值均在 OCR 文本中真实存在，并在 reason 中注明）
+- ❌ 不得自行编造日期。OCR 文本中无日期相关内容时返回空 candidates
+- ❌ 禁止根据药品名称或其他字段推断有效期
+
+输出格式：
+```json
+{"expiryDate": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，只返回 JSON。
+""".trimIndent()
+
+        private fun buildManufacturerPrompt(): String = """
+你是一个药品信息提取助手。从 OCR 识别文本中提取生产厂家。
+
+生产厂家通常包含「有限公司」「制药」「药业」「生物」等关键词。
+
+规则：
+- 优先寻找标注「生产企业」「生产单位」「厂家」「Manufacturer」后面的名称
+- ❌ 只提取 OCR 文本中真实出现的厂家名称，不得根据药品名称推断厂家
+- ❌ 不要提取经销商、代理商名称
+- ❌ OCR 文本中没有出现任何厂家名称时返回空 candidates
+
+输出格式：
+```json
+{"manufacturer": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，只返回 JSON。
+""".trimIndent()
+
+        private fun buildApprovalNumberPrompt(): String = """
+你是一个药品信息提取助手。从 OCR 识别文本中提取批准文号。
+
+批准文号是药品监管审批编码，如「国药准字H20093069」「进口药品注册证号 H20180001」。
+同一药品所有批次共用，固定不变。
+
+规则：
+- 优先提取明确标注了「批准文号」「国药准字」「注册证号」后面的编码
+- OCR 常将「准」识别为「度」，将「H」识别为「1」「I」，数字之间也常混淆，可根据药品知识修正 OCR 拼写错误
+- 例如 OCR 识别「国药度字H20046431 0」或「国药准字H2oo4643」等，应结合药品知识输出正确的「国药准字H20046430」
+- ❌ OCR 文本中没有出现任何批准文号时，返回空 candidates，不得凭空编造
+
+输出格式：
+```json
+{"approvalNumber": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，只返回 JSON。
+""".trimIndent()
+
+        private fun buildLotNumberPrompt(): String = """
+你是一个药品信息提取助手。从 OCR 识别文本中提取生产批号。
+
+生产批号是生产企业标注的批次追溯编号，通常标注为「批号」「Lot」「Batch No.」。
+每个生产批次不同，用于召回与追溯。
+
+规则：
+- 优先提取明确标注了「批号」「Lot」「Batch No.」后面的编号
+- 注意：生产批号 ≠ 批准文号，两者不要混淆
+- ❌ 批号每批不同，LLM 无法凭知识推断，必须直接来源于 OCR 文本
+- ❌ OCR 文本中没有出现任何批号时，返回空 candidates
+
+输出格式：
+```json
+{"lotNumber": {"candidates": [{"value": "...", "confidence": 0.0, "reason": "..."}]}}
+```
+无法确定则返回空 candidates，只返回 JSON。
+""".trimIndent()
+
         /**
          * 格式化用户消息（带行号 + 位置 + 可选语音输入）
+         *
+         * @param fieldLabel 可选，指定提取的字段名（如"药品名称"），为空则用通用说法
          */
-        fun formatPositionalUserMessage(ocrLines: List<OcrLine>, voiceInput: String): String {
+        fun formatPositionalUserMessage(
+            ocrLines: List<OcrLine>,
+            voiceInput: String,
+            fieldLabel: String = ""
+        ): String {
             val imageHeight = ocrLines.maxOfOrNull { it.boundingBox?.bottom ?: 0 } ?: 0
             val lines = ocrLines.mapIndexed { i, line ->
                 "行 ${i + 1} | 位置: ${line.estimateVerticalPosition(imageHeight)} | ${line.text}"
             }
-            return formatUserMessage(lines.joinToString("\n"), voiceInput)
+            return formatUserMessage(lines.joinToString("\n"), voiceInput, fieldLabel)
         }
 
         /**
          * 格式化用户消息（仅行号，无位置信息）
+         *
+         * @param fieldLabel 可选，指定提取的字段名（如"药品名称"），为空则用通用说法
          */
-        fun formatSimpleUserMessage(rawText: String, voiceInput: String): String {
+        fun formatSimpleUserMessage(rawText: String, voiceInput: String, fieldLabel: String = ""): String {
             val lines = rawText.lines().map { it.trim() }.filter { it.isNotBlank() }
                 .mapIndexed { i, line -> "行 ${i + 1} | $line" }
-            return formatUserMessage(lines.joinToString("\n"), voiceInput)
+            return formatUserMessage(lines.joinToString("\n"), voiceInput, fieldLabel)
         }
 
         /**
          * 格式化用户的输入为 user message 模板
+         *
+         * @param fieldLabel 可选，指定提取的字段名，为空则用通用说法
          */
-        private fun formatUserMessage(ocrText: String, voiceInput: String): String = buildString {
+        private fun formatUserMessage(ocrText: String, voiceInput: String, fieldLabel: String = ""): String = buildString {
             appendLine("OCR识别文本：")
             appendLine(ocrText)
             appendLine()
@@ -274,7 +379,8 @@ class DeepSeekClient(
                 appendLine(voiceInput)
                 appendLine()
             }
-            append("从以上信息，提取药品信息。")
+            val suffix = if (fieldLabel.isNotBlank()) fieldLabel else "药品信息"
+            append("从以上信息，提取$suffix。")
         }
 
         // ==================== 响应解析（纯函数，可单独测试） ====================
@@ -533,12 +639,13 @@ class DeepSeekClient(
         if (rawText.isBlank()) return FieldCandidates()
 
         return try {
-            // 1️⃣ 格式化用户消息
+            // 1️⃣ 格式化用户消息（指定字段名，LLM 就不会返回无关字段）
+            val fieldLabel = FIELD_DEFINITIONS[fieldKey]?.labelCn ?: ""
             val formattedText = if (ocrLines.isNotEmpty()) {
-                formatPositionalUserMessage(ocrLines, voiceInputDrugName)
+                formatPositionalUserMessage(ocrLines, voiceInputDrugName, fieldLabel)
             } else {
                 val filtered = DrugOcrParser.preFilter(rawText)
-                formatSimpleUserMessage(filtered, voiceInputDrugName)
+                formatSimpleUserMessage(filtered, voiceInputDrugName, fieldLabel)
             }
 
             // 2️⃣ 动态构建单字段 system prompt
