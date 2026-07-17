@@ -2,6 +2,6 @@
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.kts.
 
-# Keep ML Kit models
--keep class com.google.mlkit.** { *; }
--dontwarn com.google.mlkit.**
+# Keep ONNX Runtime classes
+-keep class ai.onnxruntime.** { *; }
+-dontwarn ai.onnxruntime.**

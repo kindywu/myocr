@@ -1,35 +1,73 @@
 package com.example.myocr
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.util.Log
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
-import com.google.mlkit.vision.text.Text
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.atomic.AtomicBoolean
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
+import com.example.myocr.ocr.CharDictLoader
+import com.example.myocr.ocr.CTCDecoder
+import com.example.myocr.ocr.DBPostProcessor
+import com.example.myocr.ocr.DetPreprocessor
+import com.example.myocr.ocr.RecPreprocessor
+import java.io.File
+import java.nio.FloatBuffer
 
 /**
- * ML Kit 中文 OCR 引擎封装
+ * PP-OCRv6 ONNX Small OCR 引擎 — 替换 Google ML Kit 中文 OCR
  *
  * 特点：
- * - 捆绑模式：中文 OCR 模型直接内嵌在 APK 中
- * - 无需 Google Play Services，国产手机（华为、小米等）通用
+ * - PP-OCRv6 Small 模型（精度优先），检测 + 识别二阶段流水线
+ * - ONNX Runtime 纯本地推理，无需 Google Play Services
  * - 完全离线运行，不上传图片
  * - 支持简体中文 + 混排英文/数字
  */
-class OcrEngine private constructor() : AutoCloseable {
+class OcrEngine private constructor(context: Context) : AutoCloseable {
 
-    private val recognizer = TextRecognition.getClient(
-        ChineseTextRecognizerOptions.Builder().build()
-    )
-    private val isReleased = AtomicBoolean(false)
+    private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
+    private val detSession: OrtSession
+    private val recSession: OrtSession
+    private val charDict: List<String>
+
+    init {
+        Log.d(TAG, "Loading PP-OCRv6 Small ONNX models...")
+
+        // 从 assets 复制模型到缓存目录（ORT 需要文件路径）
+        detSession = env.createSession(
+            loadModelFile(context, "model/ppocrv6_onnx/small_det/inference.onnx"),
+            OrtSession.SessionOptions(),
+        )
+        recSession = env.createSession(
+            loadModelFile(context, "model/ppocrv6_onnx/small_rec/inference.onnx"),
+            OrtSession.SessionOptions(),
+        )
+        charDict = CharDictLoader.load(context, "model/ppocrv6_onnx/small_rec/inference.yml")
+
+        Log.d(TAG, "PP-OCRv6 Small ONNX engine ready (det=${detSession.inputNames}, rec=${recSession.inputNames})")
+    }
+
+    /** 从 assets 拷贝 ONNX 到缓存目录，ORT 需要文件路径 */
+    private fun loadModelFile(context: Context, assetPath: String): String {
+        val cacheFile = File(context.cacheDir, assetPath)
+        if (!cacheFile.exists()) {
+            cacheFile.parentFile?.mkdirs()
+            context.assets.open(assetPath).use { input ->
+                cacheFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            Log.d(TAG, "Copied $assetPath to cache (${cacheFile.length()} bytes)")
+        }
+        return cacheFile.absolutePath
+    }
+
+    /** float[] → FloatBuffer（供 OnnxTensor.createTensor 使用） */
+    private fun floatArrayToBuffer(data: FloatArray): FloatBuffer = FloatBuffer.wrap(data)
+
+    // ── 公开方法 ────────────────────────────────────────
 
     /**
      * 对 Bitmap 进行 OCR 识别（同步阻塞调用，返回纯文本）
-     *
-     * 兼容旧接口，内部委托给 recognizeStructured()。
      */
     fun recognize(bitmap: Bitmap): String {
         return recognizeStructured(bitmap).fullText
@@ -41,40 +79,109 @@ class OcrEngine private constructor() : AutoCloseable {
      * 包含逐行文本 + 位置矩形 + 置信度，便于下游按语义分析。
      */
     fun recognizeStructured(bitmap: Bitmap): OcrResult {
-        if (isReleased.get()) {
-            throw IllegalStateException("OcrEngine has been released")
+        val startTime = System.currentTimeMillis()
+        val origW = bitmap.width
+        val origH = bitmap.height
+
+        Log.d(TAG, "Starting OCR on ${origW}x${origH} bitmap")
+
+        // 1. 检测阶段 — 找文字区域
+        val detResult = DetPreprocessor.process(bitmap)
+        val detShape = longArrayOf(1, 3, detResult.height.toLong(), detResult.width.toLong())
+        val inputTensor = OnnxTensor.createTensor(env, floatArrayToBuffer(detResult.inputTensor), detShape)
+
+        val detOut = detSession.run(mapOf(detSession.inputNames.iterator().next() to inputTensor))
+        val probTensor = detOut.get(0) as OnnxTensor
+        val probShape = probTensor.info.shape
+        val oH = probShape[2].toInt()
+        val oW = probShape[3].toInt()
+
+        val probArray = FloatArray(oH * oW)
+        probTensor.floatBuffer.rewind()
+        probTensor.floatBuffer.get(probArray)
+
+        val boxes = DBPostProcessor.process(
+            probMap = probArray,
+            probW = oW,
+            probH = oH,
+            origW = origW,
+            origH = origH,
+            scaleX = detResult.scaleX,
+            scaleY = detResult.scaleY,
+        )
+
+        Log.d(TAG, "Detection found ${boxes.size} text regions")
+
+        // 2. 识别阶段 — 对每个文字区域做识别
+        val lines = mutableListOf<OcrLine>()
+        val textBuilder = StringBuilder()
+
+        for (box in boxes) {
+            val x1 = box[0]; val y1 = box[1]; val x2 = box[2]; val y2 = box[3]
+            val bw = x2 - x1 + 1
+            val bh = y2 - y1 + 1
+            if (bw < 4 || bh < 4) continue
+
+            val cx = x1.coerceIn(0, origW - 1)
+            val cy = y1.coerceIn(0, origH - 1)
+            val cw = bw.coerceAtMost(origW - cx)
+            val ch = bh.coerceAtMost(origH - cy)
+            if (cw < 4 || ch < 4) continue
+
+            try {
+                val crop = Bitmap.createBitmap(bitmap, cx, cy, cw, ch)
+                val recInput = RecPreprocessor.process(crop)
+                val recShape = longArrayOf(1, 3, 48, 320)
+                val recTensor = OnnxTensor.createTensor(env, floatArrayToBuffer(recInput.inputTensor), recShape)
+
+                val recOut = recSession.run(mapOf(recSession.inputNames.iterator().next() to recTensor))
+                val recTensorOut = recOut.get(0) as OnnxTensor
+                val shape = recTensorOut.info.shape
+                val tSteps = shape[1].toInt()
+                val vSize = shape[2].toInt()
+
+                val outData = FloatArray(tSteps * vSize)
+                recTensorOut.floatBuffer.rewind()
+                recTensorOut.floatBuffer.get(outData)
+
+                val decoded = CTCDecoder.decode(outData, tSteps, vSize, charDict)
+                if (decoded.isNotEmpty()) {
+                    val r = decoded[0]
+                    if (r.score >= 0.3f && r.text.isNotBlank()) {
+                        lines.add(
+                            OcrLine(
+                                text = r.text,
+                                boundingBox = Rect(x1, y1, x2, y2),
+                                confidence = r.score,
+                            )
+                        )
+                        textBuilder.append(r.text).append('\n')
+                    }
+                }
+
+                crop.recycle()
+            } catch (e: Exception) {
+                Log.w(TAG, "Recognition failed for a region", e)
+            }
         }
 
-        val image = InputImage.fromBitmap(bitmap, 0)
-        val latch = CountDownLatch(1)
-        var mlKitText: Text? = null
-        var error: Exception? = null
+        // 按从上到下、从左到右排序
+        lines.sortWith(compareBy({ it.boundingBox?.top }, { it.boundingBox?.left }))
 
-        recognizer.process(image)
-            .addOnSuccessListener { result ->
-                mlKitText = result
-                latch.countDown()
-            }
-            .addOnFailureListener { e ->
-                error = e
-                latch.countDown()
-            }
+        val fullText = textBuilder.toString().trimEnd('\n')
+        val elapsed = System.currentTimeMillis() - startTime
+        Log.d(TAG, "OCR completed in ${elapsed}ms, ${lines.size} lines, ${fullText.length} chars")
 
-        latch.await()
-
-        if (error != null) {
-            throw error!!
-        }
-
-        val result = OcrResult.fromMlKit(mlKitText!!)
-        Log.d(TAG, "OCR recognized ${result.lines.size} lines, ${result.fullText.length} chars")
-        return result
+        return OcrResult(fullText = fullText, lines = lines)
     }
 
     override fun close() {
-        if (isReleased.compareAndSet(false, true)) {
-            recognizer.close()
-            Log.d(TAG, "OcrEngine released")
+        try {
+            detSession.close()
+            recSession.close()
+            Log.d(TAG, "ONNX sessions closed")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing ONNX sessions", e)
         }
     }
 
@@ -83,10 +190,12 @@ class OcrEngine private constructor() : AutoCloseable {
 
         /**
          * 创建 OCR 引擎实例
+         *
+         * @param context Android Context（用于加载 assets 中的模型文件）
          */
-        fun create(): OcrEngine {
-            Log.d(TAG, "Creating ML Kit Chinese OCR engine (bundled mode)")
-            return OcrEngine()
+        fun create(context: Context): OcrEngine {
+            Log.d(TAG, "Creating PP-OCRv6 ONNX Small engine")
+            return OcrEngine(context)
         }
     }
 }
@@ -100,46 +209,7 @@ class OcrEngine private constructor() : AutoCloseable {
 data class OcrResult(
     val fullText: String,
     val lines: List<OcrLine>
-) {
-    companion object {
-        /**
-         * 从 ML Kit Text 对象转换为结构化 OcrResult
-         */
-        fun fromMlKit(text: Text): OcrResult {
-            val allLines = mutableListOf<OcrLine>()
-            val textBuilder = StringBuilder()
-            var blockIndex = 0
-
-            // 按 textBlock（段落）遍历
-            for (block in text.textBlocks) {
-                if (blockIndex > 0) textBuilder.append('\n')
-
-                for (line in block.lines) {
-                    val text = line.text?.trim() ?: ""
-                    if (text.isNotEmpty()) {
-                        allLines.add(
-                            OcrLine(
-                                text = text,
-                                boundingBox = line.boundingBox?.let { Rect(it) },
-                                confidence = line.confidence ?: 0f
-                            )
-                        )
-                        textBuilder.append(text).append('\n')
-                    }
-                }
-                blockIndex++
-            }
-
-            // 去掉末尾多余的换行
-            var fullText = textBuilder.toString().trim()
-            if (fullText.isEmpty()) {
-                fullText = text.text?.trim() ?: ""
-            }
-
-            return OcrResult(fullText = fullText, lines = allLines)
-        }
-    }
-}
+)
 
 /**
  * OCR 单行识别结果

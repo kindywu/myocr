@@ -319,9 +319,9 @@ class MainActivity : AppCompatActivity() {
     private fun initOcrEngine() {
         ocrExecutor.execute {
             try {
-                ocrEngine = OcrEngine.create()
+                ocrEngine = OcrEngine.create(this@MainActivity)
                 isOcrReady = true
-                Log.d(TAG, "OCR engine ready (ML Kit bundled Chinese)")
+                Log.d(TAG, "OCR engine ready (PP-OCRv6 ONNX Small)")
             } catch (e: Exception) {
                 Log.e(TAG, "OCR init failed", e)
                 runOnUiThread {

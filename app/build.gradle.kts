@@ -66,8 +66,8 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
 
-    // ML Kit 中文 OCR - 捆绑模式，模型内嵌 APK，无需 GMS
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.0")
+    // PP-OCRv6 ONNX Runtime - 纯本地 OCR，不依赖 Google Play Services
+    implementation(libs.onnxruntime.android)
 
     // Fragment KTX - 用于药品录入流程的多页面导航
     implementation("androidx.fragment:fragment-ktx:1.8.5")

@@ -87,7 +87,7 @@ class CropFragment : Fragment() {
     private fun initOcr() {
         ocrExecutor.execute {
             try {
-                ocrEngine = OcrEngine.create()
+                ocrEngine = OcrEngine.create(requireContext())
                 Log.d(TAG, "OCR engine ready for crop")
             } catch (e: Exception) {
                 Log.e(TAG, "OCR init failed", e)
