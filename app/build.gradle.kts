@@ -104,16 +104,21 @@ val buildPath_16k = buildDir_16k.absolutePath
 val scriptPath_16k = scriptFile_16k.absolutePath
 
 // 用 Exec 任务类型，原生支持配置缓存序列化
-// Windows 路径转 POSIX（供 Git Bash 使用）
-fun winPath(p: String) = p.replace("\\", "/")
-fun posix(p: String) = "/" + p.replace("\\", "/").replace(":", "").lowercase()
 val realignTask = tasks.register<Exec>("realignDebugNativeLibs") {
     dependsOn("mergeDebugNativeLibs")
-    // 用 Git Bash POSIX 路径 + /bin/bash（含 MSYS2 路径转换）
-    commandLine(
-        winPath("C:/Program Files/Git/bin/bash"),
-        posix(scriptPath_16k), posix(ndkPath_16k), posix(buildPath_16k)
-    )
+    // macOS 直接用 /bin/bash，路径已经是 POSIX 格式
+    // Windows 需要 Git Bash + MSYS2 路径转换
+    val isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows
+    if (isWindows) {
+        fun winPath(p: String) = p.replace("\\", "/")
+        fun posix(p: String) = "/" + p.replace("\\", "/").replace(":", "").lowercase()
+        commandLine(
+            winPath("C:/Program Files/Git/bin/bash"),
+            posix(scriptPath_16k), posix(ndkPath_16k), posix(buildPath_16k)
+        )
+    } else {
+        commandLine("/bin/bash", scriptPath_16k, ndkPath_16k, buildPath_16k)
+    }
     isIgnoreExitValue = true
 }
 
