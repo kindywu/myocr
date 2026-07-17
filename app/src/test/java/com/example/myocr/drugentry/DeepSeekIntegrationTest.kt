@@ -166,22 +166,19 @@ C藏】遮光,密封,在干燥处保存。
         for (field in fieldMetas) {
             println("─── ${field.displayName}（${field.key}）───")
 
-            // 使用 PromptManager 动态构造字段专用 prompt
-            val request = PromptManager.buildFieldPromptStatic(
-                fieldKey = field.key,
-                rawText = rawText,
-                voiceInput = voiceInput
-            )
+            // 使用 DeepSeekClient.Companion 动态构造字段专用 prompt
+            val systemPrompt = DeepSeekClient.buildSingleFieldSystemPrompt(field.key)
+            val userMessage = DeepSeekClient.formatSimpleUserMessage(rawText, voiceInput)
 
             // 调用 API
-            val responseJson = callApi(request.userMessage, request.systemPrompt)
+            val responseJson = callApi(userMessage, systemPrompt)
 
             // 收集调试信息
             debugEntries.add("\n===== ${field.displayName} =====")
             debugEntries.add("【发送给 LLM 的 system prompt】")
-            debugEntries.add(request.systemPrompt)
+            debugEntries.add(systemPrompt)
             debugEntries.add("【发送给 LLM 的 user message】")
-            debugEntries.add(request.userMessage)
+            debugEntries.add(userMessage)
             debugEntries.add("【LLM 原始响应 JSON】")
             debugEntries.add(responseJson)
             try {

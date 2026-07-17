@@ -28,7 +28,6 @@ import java.net.URL
  */
 class DeepSeekClient(
     private val apiKey: String,
-    private val promptManager: PromptManager,
     private val config: LlmConfig = LlmConfig()
 ) {
 
@@ -130,10 +129,7 @@ class DeepSeekClient(
          */
         fun create(context: Context): DeepSeekClient? {
             val apiKey = resolveApiKey(context) ?: return null
-            return DeepSeekClient(
-                apiKey = apiKey,
-                promptManager = PromptManager(context)
-            )
+            return DeepSeekClient(apiKey = apiKey)
         }
 
         /**
