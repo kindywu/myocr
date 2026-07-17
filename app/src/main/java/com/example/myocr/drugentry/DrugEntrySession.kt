@@ -56,7 +56,10 @@ data class DrugEntrySession(
     val pendingPhotoPath: String = "",
 
     /** OCR 原始识别文本（用于调试展示） */
-    val rawOcrText: String = ""
+    val rawOcrText: String = "",
+
+    /** LLM 原始响应 JSON（用于调试展示） */
+    val llmResponseJson: String = ""
 )
 
 enum class DrugEntryStep {

@@ -20,7 +20,8 @@ import java.util.concurrent.Executors
  * 选区裁剪页
  *
  * 拍照后显示全屏图片，用户通过拖拽选择矩形识别区域。
- * 确认后对选区进行 OCR 识别，然后跳转到结果页。
+ * 确认后对选区进行 OCR 识别，然后调用 DeepSeek LLM 提取结构化药品信息，
+ * 最后跳转到补全页展示结果。
  */
 class CropFragment : Fragment() {
 
@@ -32,6 +33,7 @@ class CropFragment : Fragment() {
     private val binding get() = _binding!!
     private val ocrExecutor = Executors.newSingleThreadExecutor()
     private var ocrEngine: OcrEngine? = null
+    private var deepSeekClient: DeepSeekClient? = null
     private var sourceBitmap: android.graphics.Bitmap? = null
 
     override fun onCreateView(
@@ -91,6 +93,17 @@ class CropFragment : Fragment() {
                 Log.d(TAG, "OCR engine ready for crop")
             } catch (e: Exception) {
                 Log.e(TAG, "OCR init failed", e)
+            }
+            // 同时初始化 DeepSeek LLM 客户端（未配置 Key 时返回 null）
+            try {
+                deepSeekClient = DeepSeekClient.create(requireContext())
+                if (deepSeekClient != null) {
+                    Log.d(TAG, "DeepSeek LLM client ready")
+                } else {
+                    Log.d(TAG, "DeepSeek LLM not configured — fields left for manual entry")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "DeepSeek init failed", e)
             }
         }
     }
@@ -156,16 +169,97 @@ class CropFragment : Fragment() {
         }
     }
 
+    /**
+     * 处理 OCR 结果 → 调用 LLM 提取字段 → 更新 session → 导航
+     *
+     * 提取策略：
+     * 1. 先全字段提取（一次 API 调用）
+     * 2. 对空字段逐个单字段补提（精准兜底）
+     * 3. LLM 不可用或失败时跳过，字段留空供手动填写
+     */
     private fun handleOcrResult(activity: DrugEntryActivity, rawText: String, ocrLines: List<OcrLine>, photoPath: String) {
         Log.d(TAG, "OCR result: ${rawText.take(100)}, lines: ${ocrLines.size}")
 
-        // 保存原始 OCR 文本到 session（用于调试展示）
         activity.updateSession { it.copy(rawOcrText = rawText) }
 
-        // LLM 解析已暂时禁用，字段留空供用户手动填写
-        Log.d(TAG, "LLM extraction disabled — fields left for manual entry")
+        // DeepSeek LLM 提取
+        val client = deepSeekClient
+        if (client != null && rawText.isNotBlank()) {
+            try {
+                llmExtractDrugInfo(activity, client, rawText, ocrLines)
+            } catch (e: Exception) {
+                Log.e(TAG, "LLM extraction failed, fields left for manual entry", e)
+            }
+        } else {
+            Log.d(TAG, "LLM not available — fields left for manual entry")
+        }
 
         navigateAfterOcr(activity)
+    }
+
+    /**
+     * DeepSeek LLM 提取药品信息（全字段提取）
+     *
+     * 仅做一次全字段 API 调用。单字段提取由用户在补全页点击字段时触发。
+     */
+    private fun llmExtractDrugInfo(
+        activity: DrugEntryActivity,
+        client: DeepSeekClient,
+        rawText: String,
+        ocrLines: List<OcrLine>
+    ) {
+        val fullResult = client.extractDrugInfo(rawText, ocrLines)
+        Log.d(TAG, "Full extraction: success=${fullResult.success}, " +
+                "drugName=[${fullResult.drugInfo.drugName}] " +
+                "expiry=[${fullResult.drugInfo.expiryDate}] " +
+                "mfg=[${fullResult.drugInfo.manufacturer}] " +
+                "batch=[${fullResult.drugInfo.batchNumber}]")
+
+        val info = fullResult.drugInfo
+        val llmJson = if (fullResult.success) fullResult.rawApiResponse else ""
+
+        // 更新 session
+        // - 重拍模式: 只更新目标字段，保留其他已有值
+        // - 普通模式: 全字段合并
+        activity.updateSession { session ->
+            val targetField = session.retakeFieldTarget
+            val finalInfo: DrugInfo
+            val newStatuses = session.fieldStatuses.toMutableMap()
+
+            if (targetField != null) {
+                val current = session.drugInfo
+                finalInfo = when (targetField) {
+                    "drugName" -> current.copy(drugName = info.drugName.ifBlank { current.drugName })
+                    "expiryDate" -> current.copy(expiryDate = info.expiryDate.ifBlank { current.expiryDate })
+                    "manufacturer" -> current.copy(manufacturer = info.manufacturer.ifBlank { current.manufacturer })
+                    "batchNumber" -> current.copy(batchNumber = info.batchNumber.ifBlank { current.batchNumber })
+                    else -> current
+                }
+                val targetValue = when (targetField) {
+                    "drugName" -> finalInfo.drugName
+                    "expiryDate" -> finalInfo.expiryDate
+                    "manufacturer" -> finalInfo.manufacturer
+                    "batchNumber" -> finalInfo.batchNumber
+                    else -> ""
+                }
+                if (targetValue.isNotBlank()) newStatuses[targetField] = FieldStatus.RECOGNIZED
+            } else {
+                finalInfo = session.drugInfo.mergeWith(info)
+                if (finalInfo.drugName.isNotBlank()) newStatuses["drugName"] = FieldStatus.RECOGNIZED
+                if (finalInfo.expiryDate.isNotBlank()) newStatuses["expiryDate"] = FieldStatus.RECOGNIZED
+                if (finalInfo.manufacturer.isNotBlank()) newStatuses["manufacturer"] = FieldStatus.RECOGNIZED
+                if (finalInfo.batchNumber.isNotBlank()) newStatuses["batchNumber"] = FieldStatus.RECOGNIZED
+            }
+
+            session.copy(
+                drugInfo = finalInfo,
+                fieldStatuses = newStatuses,
+                llmResponseJson = llmJson
+            )
+        }
+
+        val filled = info.filledFieldCount
+        Log.d(TAG, "LLM full extraction complete: $filled/4 fields filled")
     }
 
     private fun navigateAfterOcr(activity: DrugEntryActivity) {
