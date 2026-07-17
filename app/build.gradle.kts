@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
 }
@@ -5,14 +7,16 @@ plugins {
 // 从 secrets.properties 或 local.properties 读取 DeepSeek API Key
 // 优先级：secrets.properties > local.properties > gradle property
 val deepseekApiKey: String = run {
-    val props = java.util.Properties()
+    val props = Properties()
     // 1. 尝试 secrets.properties
-    rootProject.file("secrets.properties").takeIf { it.exists() }?.let {
-        props.load(it.inputStream())
+    val secretsFile = rootProject.file("secrets.properties")
+    if (secretsFile.exists()) {
+        secretsFile.inputStream().use { props.load(it) }
     }
     // 2. 尝试 local.properties（覆盖）
-    rootProject.file("local.properties").takeIf { it.exists() }?.let {
-        props.load(it.inputStream())
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use { props.load(it) }
     }
     props.getProperty("deepseekApiKey")?.trim()
         ?: project.findProperty("deepseekApiKey")?.toString()
