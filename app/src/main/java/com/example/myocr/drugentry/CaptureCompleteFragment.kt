@@ -34,7 +34,8 @@ import java.util.concurrent.Executors
 class CaptureCompleteFragment : Fragment() {
 
     private var _binding: com.example.myocr.databinding.FragmentCaptureCompleteBinding? = null
-    private val binding get() = _binding!!
+    private val binding
+        get() = _binding!!
 
     /** 后台线程池（LLM API 调用用） */
     private val llmExecutor = Executors.newSingleThreadExecutor()
@@ -61,80 +62,92 @@ class CaptureCompleteFragment : Fragment() {
     private var pulseAnimator2: android.animation.Animator? = null
 
     /** 录音权限请求 */
-    private val recordAudioPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            doStartVoiceInput(voiceFieldKey)
-        } else {
-            Toast.makeText(requireContext(), R.string.voice_no_permission, Toast.LENGTH_SHORT).show()
-        }
-    }
+    private val recordAudioPermissionLauncher =
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (granted) {
+                    doStartVoiceInput(voiceFieldKey)
+                } else {
+                    Toast.makeText(
+                                    requireContext(),
+                                    R.string.voice_no_permission,
+                                    Toast.LENGTH_SHORT
+                            )
+                            .show()
+                }
+            }
 
     /** 创建 SpeechRecognizer 并设置监听器 */
     private fun createSpeechRecognizer(): SpeechRecognizer {
         val recognizer = SpeechRecognizer.createSpeechRecognizer(requireContext())
-        recognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                // 对话框已显示，无需额外操作
-            }
+        recognizer.setRecognitionListener(
+                object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        // 对话框已显示，无需额外操作
+                    }
 
-            override fun onBeginningOfSpeech() {
-                // 检测到用户开始说话
-            }
+                    override fun onBeginningOfSpeech() {
+                        // 检测到用户开始说话
+                    }
 
-            override fun onEndOfSpeech() {
-                // 用户停止说话
-            }
+                    override fun onEndOfSpeech() {
+                        // 用户停止说话
+                    }
 
-            override fun onRmsChanged(rmsdB: Float) {
-                updateWaveBars(rmsdB)
-            }
+                    override fun onRmsChanged(rmsdB: Float) {
+                        updateWaveBars(rmsdB)
+                    }
 
-            override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
 
-            override fun onPartialResults(partialResults: Bundle?) {
-                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (!matches.isNullOrEmpty()) {
-                    voiceDialog?.findViewById<TextView>(R.id.partialResult)?.text = matches[0]
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        val matches =
+                                partialResults?.getStringArrayList(
+                                        SpeechRecognizer.RESULTS_RECOGNITION
+                                )
+                        if (!matches.isNullOrEmpty()) {
+                            voiceDialog?.findViewById<TextView>(R.id.partialResult)?.text =
+                                    matches[0]
+                        }
+                    }
+
+                    override fun onResults(results: Bundle?) {
+                        val matches =
+                                results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        if (!matches.isNullOrEmpty()) {
+                            onVoiceResult(voiceFieldKey, matches[0])
+                        }
+                        dismissVoiceDialog()
+                    }
+
+                    override fun onError(error: Int) {
+                        val message =
+                                when (error) {
+                                    SpeechRecognizer.ERROR_NO_MATCH -> "未听清，请重试"
+                                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有说话，已超时"
+                                    SpeechRecognizer.ERROR_AUDIO -> "录音失败"
+                                    SpeechRecognizer.ERROR_CLIENT -> "语音识别服务异常"
+                                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少录音权限"
+                                    SpeechRecognizer.ERROR_NETWORK -> "网络不可用"
+                                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "网络超时"
+                                    SpeechRecognizer.ERROR_SERVER -> "服务端错误"
+                                    else -> "识别出错 ($error)"
+                                }
+                        if (isAdded) {
+                            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+                        }
+                        dismissVoiceDialog()
+                    }
+
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
                 }
-            }
-
-            override fun onResults(results: Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (!matches.isNullOrEmpty()) {
-                    onVoiceResult(voiceFieldKey, matches[0])
-                }
-                dismissVoiceDialog()
-            }
-
-            override fun onError(error: Int) {
-                val message = when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH -> "未听清，请重试"
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有说话，已超时"
-                    SpeechRecognizer.ERROR_AUDIO -> "录音失败"
-                    SpeechRecognizer.ERROR_CLIENT -> "语音识别服务异常"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少录音权限"
-                    SpeechRecognizer.ERROR_NETWORK -> "网络不可用"
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "网络超时"
-                    SpeechRecognizer.ERROR_SERVER -> "服务端错误"
-                    else -> "识别出错 ($error)"
-                }
-                if (isAdded) {
-                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
-                }
-                dismissVoiceDialog()
-            }
-
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
+        )
         return recognizer
     }
 
     /** 显示语音输入动画对话框 */
     private fun showVoiceDialog(fieldKey: String) {
-        val dialogView = LayoutInflater.from(requireContext())
-            .inflate(R.layout.dialog_voice_input, null)
+        val dialogView =
+                LayoutInflater.from(requireContext()).inflate(R.layout.dialog_voice_input, null)
 
         val fieldLabel = dialogView.findViewById<TextView>(R.id.fieldLabel)
         val cancelButton = dialogView.findViewById<Button>(R.id.cancelButton)
@@ -145,13 +158,15 @@ class CaptureCompleteFragment : Fragment() {
 
         // 收集音波条
         waveBars.clear()
-        waveBars.addAll(listOf(
-            dialogView.findViewById(R.id.waveBar1),
-            dialogView.findViewById(R.id.waveBar2),
-            dialogView.findViewById(R.id.waveBar3),
-            dialogView.findViewById(R.id.waveBar4),
-            dialogView.findViewById(R.id.waveBar5),
-        ))
+        waveBars.addAll(
+                listOf(
+                        dialogView.findViewById(R.id.waveBar1),
+                        dialogView.findViewById(R.id.waveBar2),
+                        dialogView.findViewById(R.id.waveBar3),
+                        dialogView.findViewById(R.id.waveBar4),
+                        dialogView.findViewById(R.id.waveBar5),
+                )
+        )
 
         // 启动脉冲环动画
         pulseAnimator1 = startPulseAnimation(pulseRing1, 1200, 1.0f, 1.8f)
@@ -159,38 +174,45 @@ class CaptureCompleteFragment : Fragment() {
 
         cancelButton.setOnClickListener { stopVoiceInput() }
 
-        voiceDialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setView(dialogView)
-            .setCancelable(true)
-            .setOnCancelListener { stopVoiceInput() }
-            .show()
+        voiceDialog =
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+                        .setView(dialogView)
+                        .setCancelable(true)
+                        .setOnCancelListener { stopVoiceInput() }
+                        .show()
     }
 
     /** 脉冲环缩放 + 淡出动画 */
     private fun startPulseAnimation(
-        view: View, duration: Long, fromScale: Float, toScale: Float
+            view: View,
+            duration: Long,
+            fromScale: Float,
+            toScale: Float
     ): android.animation.Animator {
-        val scaleX = android.animation.ObjectAnimator.ofFloat(view, View.SCALE_X, fromScale, toScale).apply {
-            this.duration = duration
-            interpolator = AccelerateDecelerateInterpolator()
-            repeatCount = android.animation.ValueAnimator.INFINITE
-            repeatMode = android.animation.ValueAnimator.RESTART
-        }
-        val scaleY = android.animation.ObjectAnimator.ofFloat(view, View.SCALE_Y, fromScale, toScale).apply {
-            this.duration = duration
-            interpolator = AccelerateDecelerateInterpolator()
-            repeatCount = android.animation.ValueAnimator.INFINITE
-            repeatMode = android.animation.ValueAnimator.RESTART
-        }
-        val alpha = android.animation.ObjectAnimator.ofFloat(view, View.ALPHA, 0.6f, 0.0f).apply {
-            this.duration = duration
-            interpolator = AccelerateDecelerateInterpolator()
-            repeatCount = android.animation.ValueAnimator.INFINITE
-            repeatMode = android.animation.ValueAnimator.RESTART
-        }
-        val set = android.animation.AnimatorSet().apply {
-            playTogether(scaleX, scaleY, alpha)
-        }
+        val scaleX =
+                android.animation.ObjectAnimator.ofFloat(view, View.SCALE_X, fromScale, toScale)
+                        .apply {
+                            this.duration = duration
+                            interpolator = AccelerateDecelerateInterpolator()
+                            repeatCount = android.animation.ValueAnimator.INFINITE
+                            repeatMode = android.animation.ValueAnimator.RESTART
+                        }
+        val scaleY =
+                android.animation.ObjectAnimator.ofFloat(view, View.SCALE_Y, fromScale, toScale)
+                        .apply {
+                            this.duration = duration
+                            interpolator = AccelerateDecelerateInterpolator()
+                            repeatCount = android.animation.ValueAnimator.INFINITE
+                            repeatMode = android.animation.ValueAnimator.RESTART
+                        }
+        val alpha =
+                android.animation.ObjectAnimator.ofFloat(view, View.ALPHA, 0.6f, 0.0f).apply {
+                    this.duration = duration
+                    interpolator = AccelerateDecelerateInterpolator()
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    repeatMode = android.animation.ValueAnimator.RESTART
+                }
+        val set = android.animation.AnimatorSet().apply { playTogether(scaleX, scaleY, alpha) }
         set.start()
         return set
     }
@@ -229,9 +251,16 @@ class CaptureCompleteFragment : Fragment() {
     // ==================== 语音识别结束 ====================
 
     override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
+            inflater: LayoutInflater,
+            container: ViewGroup?,
+            savedInstanceState: Bundle?
     ): View {
-        _binding = com.example.myocr.databinding.FragmentCaptureCompleteBinding.inflate(inflater, container, false)
+        _binding =
+                com.example.myocr.databinding.FragmentCaptureCompleteBinding.inflate(
+                        inflater,
+                        container,
+                        false
+                )
         return binding.root
     }
 
@@ -294,15 +323,16 @@ class CaptureCompleteFragment : Fragment() {
 
         // 调试：查看原始 OCR 文本和 LLM 响应
         binding.debugRawOcr.setOnClickListener { showOcrDebugDialog(activity) }
-        binding.debugRawOcr.visibility = if (session.rawOcrText.isNotBlank()) View.VISIBLE else View.GONE
+        binding.debugRawOcr.visibility =
+                if (session.rawOcrText.isNotBlank()) View.VISIBLE else View.GONE
     }
 
     /** 启动系统语音识别 —— 自动请求权限后使用 SpeechRecognizer + 自定义动画 */
     private fun startVoiceInput(fieldKey: String) {
         voiceFieldKey = fieldKey
         // 检查录音权限
-        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO) !=
+                        PackageManager.PERMISSION_GRANTED
         ) {
             recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             return
@@ -324,14 +354,15 @@ class CaptureCompleteFragment : Fragment() {
 
         // 启动识别
         try {
-            val intent = Intent().apply {
-                putExtra(
-                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                )
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            }
+            val intent =
+                    Intent().apply {
+                        putExtra(
+                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                        )
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    }
             speechRecognizer?.startListening(intent)
         } catch (e: Exception) {
             Log.e(TAG, "SpeechRecognizer start failed", e)
@@ -346,13 +377,14 @@ class CaptureCompleteFragment : Fragment() {
         val current = activity.session.drugInfo
 
         // 获取当前字段值
-        val currentValue: String = when (fieldKey) {
-            "drugName" -> current.drugName
-            "expiryDate" -> current.expiryDate
-            "manufacturer" -> current.manufacturer
-            "batchNumber" -> current.batchNumber
-            else -> ""
-        }
+        val currentValue: String =
+                when (fieldKey) {
+                    "drugName" -> current.drugName
+                    "expiryDate" -> current.expiryDate
+                    "manufacturer" -> current.manufacturer
+                    "batchNumber" -> current.batchNumber
+                    else -> ""
+                }
 
         // 情况 1：当前字段为空 → 直接填入语音结果
         if (currentValue.isBlank()) {
@@ -362,8 +394,7 @@ class CaptureCompleteFragment : Fragment() {
 
         // 情况 2：语音结果与当前值完全相同 → 无需操作
         if (spokenText == currentValue) {
-            Toast.makeText(requireContext(),
-                "语音识别结果与 OCR 一致", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "语音识别结果与 OCR 一致", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -374,13 +405,14 @@ class CaptureCompleteFragment : Fragment() {
     /** 直接应用语音结果到字段 */
     private fun applyVoiceResult(activity: DrugEntryActivity, fieldKey: String, value: String) {
         val current = activity.session.drugInfo
-        val updated = when (fieldKey) {
-            "drugName" -> current.copy(drugName = value)
-            "expiryDate" -> current.copy(expiryDate = value)
-            "manufacturer" -> current.copy(manufacturer = value)
-            "batchNumber" -> current.copy(batchNumber = value)
-            else -> current
-        }
+        val updated =
+                when (fieldKey) {
+                    "drugName" -> current.copy(drugName = value)
+                    "expiryDate" -> current.copy(expiryDate = value)
+                    "manufacturer" -> current.copy(manufacturer = value)
+                    "batchNumber" -> current.copy(batchNumber = value)
+                    else -> current
+                }
         activity.updateDrugInfo(updated, FieldStatus.MANUAL)
         updateFieldStatus(activity, activity.session)
         updateProgress(activity.session)
@@ -388,28 +420,28 @@ class CaptureCompleteFragment : Fragment() {
 
     /** 显示语音结果 vs OCR 值对比确认对话框 */
     private fun showVoiceConfirmDialog(
-        activity: DrugEntryActivity,
-        fieldKey: String,
-        currentValue: String,
-        spokenText: String
+            activity: DrugEntryActivity,
+            fieldKey: String,
+            currentValue: String,
+            spokenText: String
     ) {
-        val dialogView = LayoutInflater.from(requireContext())
-            .inflate(R.layout.dialog_voice_confirm, null)
+        val dialogView =
+                LayoutInflater.from(requireContext()).inflate(R.layout.dialog_voice_confirm, null)
 
         dialogView.findViewById<TextView>(R.id.currentValue).text = currentValue
         dialogView.findViewById<TextView>(R.id.voiceValue).text = spokenText
 
         com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setTitle("语音识别结果 — ${getFieldLabel(fieldKey)}")
-            .setView(dialogView)
-            .setPositiveButton("替换") { _, _ ->
-                applyVoiceResult(activity, fieldKey, spokenText)
-            }
-            .setNegativeButton("保留") { _, _ ->
-                // 什么都不做，保留原值
-            }
-            .setCancelable(true)
-            .show()
+                .setTitle("语音识别结果 — ${getFieldLabel(fieldKey)}")
+                .setView(dialogView)
+                .setPositiveButton("替换") { _, _ ->
+                    applyVoiceResult(activity, fieldKey, spokenText)
+                }
+                .setNegativeButton("保留") { _, _ ->
+                    // 什么都不做，保留原值
+                }
+                .setCancelable(true)
+                .show()
     }
 
     private fun updateProgress(session: DrugEntrySession) {
@@ -424,56 +456,54 @@ class CaptureCompleteFragment : Fragment() {
         val info = session.drugInfo
 
         updateSingleField(
-            activity = activity,
-            fieldKey = "drugName",
-            fieldValue = info.drugName,
-            valueView = binding.drugNameValue,
-            captureButton = binding.drugNameCapture,
-            cardView = binding.drugNameCard
+                activity = activity,
+                fieldKey = "drugName",
+                fieldValue = info.drugName,
+                valueView = binding.drugNameValue,
+                captureButton = binding.drugNameCapture,
+                cardView = binding.drugNameCard
         )
 
         updateSingleField(
-            activity = activity,
-            fieldKey = "expiryDate",
-            fieldValue = info.expiryDate,
-            valueView = binding.expiryValue,
-            captureButton = binding.expiryCapture,
-            cardView = binding.expiryCard
+                activity = activity,
+                fieldKey = "expiryDate",
+                fieldValue = info.expiryDate,
+                valueView = binding.expiryValue,
+                captureButton = binding.expiryCapture,
+                cardView = binding.expiryCard
         )
 
         updateSingleField(
-            activity = activity,
-            fieldKey = "manufacturer",
-            fieldValue = info.manufacturer,
-            valueView = binding.manufacturerValue,
-            captureButton = binding.manufacturerCapture,
-            cardView = binding.manufacturerCard
+                activity = activity,
+                fieldKey = "manufacturer",
+                fieldValue = info.manufacturer,
+                valueView = binding.manufacturerValue,
+                captureButton = binding.manufacturerCapture,
+                cardView = binding.manufacturerCard
         )
 
         updateSingleField(
-            activity = activity,
-            fieldKey = "batchNumber",
-            fieldValue = info.batchNumber,
-            valueView = binding.batchValue,
-            captureButton = binding.batchCapture,
-            cardView = binding.batchCard
+                activity = activity,
+                fieldKey = "batchNumber",
+                fieldValue = info.batchNumber,
+                valueView = binding.batchValue,
+                captureButton = binding.batchCapture,
+                cardView = binding.batchCard
         )
     }
 
     /**
      * 更新单个字段的显示状态
      *
-     * 有值的字段显示值 + 品牌色背景，空字段隐藏值区域显示橙色提示。
-     * 字段值可点击触发单字段 LLM 重新提取（改善结果）。
-     * 拍照和语音按钮始终可见。
+     * 有值的字段显示值 + 品牌色背景，空字段隐藏值区域显示橙色提示。 字段值可点击触发单字段 LLM 重新提取（改善结果）。 拍照和语音按钮始终可见。
      */
     private fun updateSingleField(
-        activity: DrugEntryActivity,
-        fieldKey: String,
-        fieldValue: String,
-        valueView: View,
-        captureButton: View,
-        cardView: View
+            activity: DrugEntryActivity,
+            fieldKey: String,
+            fieldValue: String,
+            valueView: View,
+            captureButton: View,
+            cardView: View
     ) {
         if (fieldValue.isNotBlank()) {
             (valueView as? android.widget.TextView)?.text = fieldValue
@@ -493,13 +523,12 @@ class CaptureCompleteFragment : Fragment() {
     /**
      * 启动单字段 LLM 提取
      *
-     * 用户在补全页点击字段值时触发，对该字段单独调用一次 DeepSeek API，
-     * 提取结果只更新当前字段，不影响其他字段已有值。
+     * 用户在补全页点击字段值时触发，对该字段单独调用一次 DeepSeek API， 提取结果只更新当前字段，不影响其他字段已有值。
      */
     private fun startSingleFieldExtraction(
-        activity: DrugEntryActivity,
-        fieldKey: String,
-        valueView: View
+            activity: DrugEntryActivity,
+            fieldKey: String,
+            valueView: View
     ) {
         val client = deepSeekClient ?: return
         val rawText = activity.session.rawOcrText
@@ -522,72 +551,78 @@ class CaptureCompleteFragment : Fragment() {
                     if (newValue.isNotBlank()) {
                         // 只更新该字段
                         val current = activity.session.drugInfo
-                        val updated = when (fieldKey) {
-                            "drugName" -> current.copy(drugName = newValue)
-                            "expiryDate" -> current.copy(expiryDate = newValue)
-                            "manufacturer" -> current.copy(manufacturer = newValue)
-                            "batchNumber" -> current.copy(batchNumber = newValue)
-                            else -> return@runOnUiThread
-                        }
+                        val updated =
+                                when (fieldKey) {
+                                    "drugName" -> current.copy(drugName = newValue)
+                                    "expiryDate" -> current.copy(expiryDate = newValue)
+                                    "manufacturer" -> current.copy(manufacturer = newValue)
+                                    "batchNumber" -> current.copy(batchNumber = newValue)
+                                    else -> return@runOnUiThread
+                                }
                         activity.updateDrugInfo(updated, FieldStatus.RECOGNIZED)
                         // 刷新页面
                         updateFieldStatus(activity, activity.session)
                         updateProgress(activity.session)
 
-                        Toast.makeText(requireContext(),
-                            "${getFieldLabel(fieldKey)}: $newValue", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                                        requireContext(),
+                                        "${getFieldLabel(fieldKey)}: $newValue",
+                                        Toast.LENGTH_SHORT
+                                )
+                                .show()
                     } else {
-                        (valueView as? android.widget.TextView)?.text = activity.session.drugInfo.run {
-                            when (fieldKey) {
-                                "drugName" -> drugName
-                                "expiryDate" -> expiryDate
-                                "manufacturer" -> manufacturer
-                                "batchNumber" -> batchNumber
-                                else -> ""
-                            }
-                        }
+                        (valueView as? android.widget.TextView)?.text =
+                                activity.session.drugInfo.run {
+                                    when (fieldKey) {
+                                        "drugName" -> drugName
+                                        "expiryDate" -> expiryDate
+                                        "manufacturer" -> manufacturer
+                                        "batchNumber" -> batchNumber
+                                        else -> ""
+                                    }
+                                }
                         valueView.isClickable = deepSeekClient != null
-                        Toast.makeText(requireContext(),
-                            "LLM 无法提取该字段", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "LLM 无法提取该字段", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Single-field extraction [$fieldKey] failed", e)
                 activity.runOnUiThread {
                     if (!isAdded) return@runOnUiThread
-                    (valueView as? android.widget.TextView)?.text = activity.session.drugInfo.run {
-                        when (fieldKey) {
-                            "drugName" -> drugName
-                            "expiryDate" -> expiryDate
-                            "manufacturer" -> manufacturer
-                            "batchNumber" -> batchNumber
-                            else -> ""
-                        }
-                    }
+                    (valueView as? android.widget.TextView)?.text =
+                            activity.session.drugInfo.run {
+                                when (fieldKey) {
+                                    "drugName" -> drugName
+                                    "expiryDate" -> expiryDate
+                                    "manufacturer" -> manufacturer
+                                    "batchNumber" -> batchNumber
+                                    else -> ""
+                                }
+                            }
                     valueView.isClickable = deepSeekClient != null
-                    Toast.makeText(requireContext(),
-                        "提取失败: ${e.message?.take(50)}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                                    requireContext(),
+                                    "提取失败: ${e.message?.take(50)}",
+                                    Toast.LENGTH_SHORT
+                            )
+                            .show()
                 }
             }
         }
     }
 
-    /**
-     * 获取字段的中文标签
-     */
+    /** 获取字段的中文标签 */
     private fun getFieldLabel(fieldKey: String): String {
         return when (fieldKey) {
             "drugName" -> "药品名称"
-            "expiryDate" -> "有效期"
+            "expiryDate" -> "有效期至"
             "manufacturer" -> "生产厂家"
             "batchNumber" -> "批号"
             else -> fieldKey
         }
     }
 
-    /**
-     * 显示 OCR 调试对话框：展示可直接复制的原始数据（OCR 原文、API 响应）
-     */
+    /** 显示 OCR 调试对话框：展示可直接复制的原始数据（OCR 原文、API 响应） */
     private fun showOcrDebugDialog(activity: DrugEntryActivity) {
         val session = activity.session
         val rawText = session.rawOcrText
@@ -613,22 +648,23 @@ class CaptureCompleteFragment : Fragment() {
 
         // 使用可滚动的对话框展示
         val scrollView = android.widget.ScrollView(requireContext())
-        val textView = android.widget.TextView(requireContext()).apply {
-            this.text = message
-            textSize = 11f
-            typeface = android.graphics.Typeface.MONOSPACE
-            setLineSpacing(4f, 1f)
-            setPadding(24, 16, 24, 16)
-            setTextIsSelectable(true)  // 允许长按复制
-        }
+        val textView =
+                android.widget.TextView(requireContext()).apply {
+                    this.text = message
+                    textSize = 11f
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    setLineSpacing(4f, 1f)
+                    setPadding(24, 16, 24, 16)
+                    setTextIsSelectable(true) // 允许长按复制
+                }
         scrollView.addView(textView)
         scrollView.minimumHeight = 400
 
         com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setTitle("识别调试信息")
-            .setView(scrollView)
-            .setPositiveButton("关闭", null)
-            .show()
+                .setTitle("识别调试信息")
+                .setView(scrollView)
+                .setPositiveButton("关闭", null)
+                .show()
     }
 
     override fun onDestroyView() {

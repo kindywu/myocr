@@ -166,7 +166,7 @@
 
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 有效期 -->
+            <!-- 有效期至 -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/expiryCard"
                 android:layout_width="match_parent"

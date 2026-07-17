@@ -35,7 +35,10 @@ class OcrLlmComparisonTest {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         ocrEngine = OcrEngine.create(context)
         deepSeekClient = DeepSeekClient.create(context)
-        Log.i(TAG, "=== OcrEngine ready, DeepSeekClient: ${if (deepSeekClient != null) "configured" else "NOT configured (skip LLM)"} ===")
+        Log.i(
+                TAG,
+                "=== OcrEngine ready, DeepSeekClient: ${if (deepSeekClient != null) "configured" else "NOT configured (skip LLM)"} ==="
+        )
     }
 
     @After
@@ -61,21 +64,25 @@ class OcrLlmComparisonTest {
         // ── Step 2: LLM 结构化提取 ──
         val client = deepSeekClient
         if (client != null) {
-            val llmResult = client.extractDrugInfo(
-                rawText = ocrResult.fullText,
-                ocrLines = ocrResult.lines,
-                userVoiceText = ""
-            )
+            val llmResult =
+                    client.extractDrugInfo(
+                            rawText = ocrResult.fullText,
+                            ocrLines = ocrResult.lines,
+                            userVoiceText = ""
+                    )
             Log.i(TAG, "【LLM 提取结果】━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             Log.i(TAG, "药品名称: ${llmResult.drugInfo.drugName}")
-            Log.i(TAG, "有效期至: ${llmResult.drugInfo.expiryDate}")
+            Log.i(TAG, "有效期至至: ${llmResult.drugInfo.expiryDate}")
             Log.i(TAG, "生产厂家: ${llmResult.drugInfo.manufacturer}")
             Log.i(TAG, "批号/注册号: ${llmResult.drugInfo.batchNumber}")
 
             // 打印候选详情
             for ((fieldKey, fieldCandidates) in llmResult.allCandidates) {
                 for (c in fieldCandidates.candidates) {
-                    Log.i(TAG, "  [$fieldKey] ${c.value} (conf=${"%.2f".format(c.confidence)}) ${c.reason}")
+                    Log.i(
+                            TAG,
+                            "  [$fieldKey] ${c.value} (conf=${"%.2f".format(c.confidence)}) ${c.reason}"
+                    )
                 }
             }
             Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -108,21 +115,25 @@ class OcrLlmComparisonTest {
         // ── Step 2: LLM 结构化提取 ──
         val client = deepSeekClient
         if (client != null) {
-            val llmResult = client.extractDrugInfo(
-                rawText = ocrResult.fullText,
-                ocrLines = ocrResult.lines,
-                userVoiceText = ""
-            )
+            val llmResult =
+                    client.extractDrugInfo(
+                            rawText = ocrResult.fullText,
+                            ocrLines = ocrResult.lines,
+                            userVoiceText = ""
+                    )
             Log.i(TAG, "【LLM 提取结果】━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             Log.i(TAG, "药品名称: ${llmResult.drugInfo.drugName}")
-            Log.i(TAG, "有效期至: ${llmResult.drugInfo.expiryDate}")
+            Log.i(TAG, "有效期至至: ${llmResult.drugInfo.expiryDate}")
             Log.i(TAG, "生产厂家: ${llmResult.drugInfo.manufacturer}")
             Log.i(TAG, "批号/注册号: ${llmResult.drugInfo.batchNumber}")
 
             // 打印候选详情
             for ((fieldKey, fieldCandidates) in llmResult.allCandidates) {
                 for (c in fieldCandidates.candidates) {
-                    Log.i(TAG, "  [$fieldKey] ${c.value} (conf=${"%.2f".format(c.confidence)}) ${c.reason}")
+                    Log.i(
+                            TAG,
+                            "  [$fieldKey] ${c.value} (conf=${"%.2f".format(c.confidence)}) ${c.reason}"
+                    )
                 }
             }
             Log.i(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")

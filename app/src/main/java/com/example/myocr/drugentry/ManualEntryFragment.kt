@@ -12,19 +12,25 @@ import java.util.Calendar
 /**
  * 手动录入页
  *
- * 兜底路径：用户逐项填写药品信息。
- * 有效期字段点击弹出日期选择器。
- * 提供"去拍照补全"入口，可从手动切换到拍照流程。
+ * 兜底路径：用户逐项填写药品信息。 有效期至字段点击弹出日期选择器。 提供"去拍照补全"入口，可从手动切换到拍照流程。
  */
 class ManualEntryFragment : Fragment() {
 
     private var _binding: com.example.myocr.databinding.FragmentManualEntryBinding? = null
-    private val binding get() = _binding!!
+    private val binding
+        get() = _binding!!
 
     override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
+            inflater: LayoutInflater,
+            container: ViewGroup?,
+            savedInstanceState: Bundle?
     ): View {
-        _binding = com.example.myocr.databinding.FragmentManualEntryBinding.inflate(inflater, container, false)
+        _binding =
+                com.example.myocr.databinding.FragmentManualEntryBinding.inflate(
+                        inflater,
+                        container,
+                        false
+                )
         return binding.root
     }
 
@@ -35,7 +41,7 @@ class ManualEntryFragment : Fragment() {
         // 返回
         binding.backButton.setOnClickListener { activity.supportFragmentManager.popBackStack() }
 
-        // 有效期 → 点击弹出日期选择器
+        // 有效期至 → 点击弹出日期选择器
         setupDatePicker()
 
         // 去拍照补全 → 切换到拍照流程（保留已填字段）
@@ -73,23 +79,25 @@ class ManualEntryFragment : Fragment() {
         }
 
         DatePickerDialog(
-            requireContext(),
-            { _, year, month, _ ->
-                binding.expiryInput.setText(String.format("%04d-%02d", year, month + 1))
-            },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
-        ).show()
+                        requireContext(),
+                        { _, year, month, _ ->
+                            binding.expiryInput.setText(String.format("%04d-%02d", year, month + 1))
+                        },
+                        calendar.get(Calendar.YEAR),
+                        calendar.get(Calendar.MONTH),
+                        calendar.get(Calendar.DAY_OF_MONTH)
+                )
+                .show()
     }
 
     private fun saveToSession(activity: DrugEntryActivity) {
-        val info = DrugInfo(
-            drugName = binding.drugNameInput.text?.toString()?.trim() ?: "",
-            expiryDate = binding.expiryInput.text?.toString()?.trim() ?: "",
-            manufacturer = binding.manufacturerInput.text?.toString()?.trim() ?: "",
-            batchNumber = binding.batchInput.text?.toString()?.trim() ?: ""
-        )
+        val info =
+                DrugInfo(
+                        drugName = binding.drugNameInput.text?.toString()?.trim() ?: "",
+                        expiryDate = binding.expiryInput.text?.toString()?.trim() ?: "",
+                        manufacturer = binding.manufacturerInput.text?.toString()?.trim() ?: "",
+                        batchNumber = binding.batchInput.text?.toString()?.trim() ?: ""
+                )
         activity.updateDrugInfo(info, FieldStatus.MANUAL)
     }
 
