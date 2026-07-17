@@ -1,15 +1,22 @@
 package com.example.myocr.drugentry
 
-import android.content.ActivityNotFoundException
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.example.myocr.R
 import java.util.concurrent.Executors
@@ -38,17 +45,188 @@ class CaptureCompleteFragment : Fragment() {
     /** 当前正在语音输入的字段 key */
     private var voiceFieldKey: String = ""
 
-    /** 语音输入结果回调 */
-    private val voiceInputLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            if (!matches.isNullOrEmpty()) {
-                onVoiceResult(voiceFieldKey, matches[0])
-            }
+    // ==================== 语音识别（SpeechRecognizer + 自定义动画对话框） ====================
+
+    /** SpeechRecognizer 实例 */
+    private var speechRecognizer: SpeechRecognizer? = null
+
+    /** 语音输入动画对话框 */
+    private var voiceDialog: androidx.appcompat.app.AlertDialog? = null
+
+    /** 音波可视化条 */
+    private val waveBars = mutableListOf<View>()
+
+    /** 脉冲环动画 */
+    private var pulseAnimator1: android.animation.Animator? = null
+    private var pulseAnimator2: android.animation.Animator? = null
+
+    /** 录音权限请求 */
+    private val recordAudioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            doStartVoiceInput(voiceFieldKey)
+        } else {
+            Toast.makeText(requireContext(), R.string.voice_no_permission, Toast.LENGTH_SHORT).show()
         }
     }
+
+    /** 创建 SpeechRecognizer 并设置监听器 */
+    private fun createSpeechRecognizer(): SpeechRecognizer {
+        val recognizer = SpeechRecognizer.createSpeechRecognizer(requireContext())
+        recognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                // 对话框已显示，无需额外操作
+            }
+
+            override fun onBeginningOfSpeech() {
+                // 检测到用户开始说话
+            }
+
+            override fun onEndOfSpeech() {
+                // 用户停止说话
+            }
+
+            override fun onRmsChanged(rmsdB: Float) {
+                updateWaveBars(rmsdB)
+            }
+
+            override fun onBufferReceived(buffer: ByteArray?) {}
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    voiceDialog?.findViewById<TextView>(R.id.partialResult)?.text = matches[0]
+                }
+            }
+
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    onVoiceResult(voiceFieldKey, matches[0])
+                }
+                dismissVoiceDialog()
+            }
+
+            override fun onError(error: Int) {
+                val message = when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH -> "未听清，请重试"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有说话，已超时"
+                    SpeechRecognizer.ERROR_AUDIO -> "录音失败"
+                    SpeechRecognizer.ERROR_CLIENT -> "语音识别服务异常"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少录音权限"
+                    SpeechRecognizer.ERROR_NETWORK -> "网络不可用"
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "网络超时"
+                    SpeechRecognizer.ERROR_SERVER -> "服务端错误"
+                    else -> "识别出错 ($error)"
+                }
+                if (isAdded) {
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+                }
+                dismissVoiceDialog()
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        return recognizer
+    }
+
+    /** 显示语音输入动画对话框 */
+    private fun showVoiceDialog(fieldKey: String) {
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_voice_input, null)
+
+        val fieldLabel = dialogView.findViewById<TextView>(R.id.fieldLabel)
+        val cancelButton = dialogView.findViewById<Button>(R.id.cancelButton)
+        val pulseRing1 = dialogView.findViewById<View>(R.id.pulseRing1)
+        val pulseRing2 = dialogView.findViewById<View>(R.id.pulseRing2)
+
+        fieldLabel.text = "正在听「${getFieldLabel(fieldKey)}」"
+
+        // 收集音波条
+        waveBars.clear()
+        waveBars.addAll(listOf(
+            dialogView.findViewById(R.id.waveBar1),
+            dialogView.findViewById(R.id.waveBar2),
+            dialogView.findViewById(R.id.waveBar3),
+            dialogView.findViewById(R.id.waveBar4),
+            dialogView.findViewById(R.id.waveBar5),
+        ))
+
+        // 启动脉冲环动画
+        pulseAnimator1 = startPulseAnimation(pulseRing1, 1200, 1.0f, 1.8f)
+        pulseAnimator2 = startPulseAnimation(pulseRing2, 1200, 1.0f, 1.4f)
+
+        cancelButton.setOnClickListener { stopVoiceInput() }
+
+        voiceDialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+            .setView(dialogView)
+            .setCancelable(true)
+            .setOnCancelListener { stopVoiceInput() }
+            .show()
+    }
+
+    /** 脉冲环缩放 + 淡出动画 */
+    private fun startPulseAnimation(
+        view: View, duration: Long, fromScale: Float, toScale: Float
+    ): android.animation.Animator {
+        val scaleX = android.animation.ObjectAnimator.ofFloat(view, View.SCALE_X, fromScale, toScale).apply {
+            this.duration = duration
+            interpolator = AccelerateDecelerateInterpolator()
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            repeatMode = android.animation.ValueAnimator.RESTART
+        }
+        val scaleY = android.animation.ObjectAnimator.ofFloat(view, View.SCALE_Y, fromScale, toScale).apply {
+            this.duration = duration
+            interpolator = AccelerateDecelerateInterpolator()
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            repeatMode = android.animation.ValueAnimator.RESTART
+        }
+        val alpha = android.animation.ObjectAnimator.ofFloat(view, View.ALPHA, 0.6f, 0.0f).apply {
+            this.duration = duration
+            interpolator = AccelerateDecelerateInterpolator()
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            repeatMode = android.animation.ValueAnimator.RESTART
+        }
+        val set = android.animation.AnimatorSet().apply {
+            playTogether(scaleX, scaleY, alpha)
+        }
+        set.start()
+        return set
+    }
+
+    /** 根据音量更新音波条高度 */
+    private fun updateWaveBars(rmsdB: Float) {
+        // rmsdB 范围约 0-10，归一化
+        val normalized = (rmsdB / 12.0f).coerceIn(0f, 1f)
+        for ((i, bar) in waveBars.withIndex()) {
+            // 每根条略有偏移，形成流动感
+            val offset = ((i - 2) * 0.12f)
+            val scale = 0.3f + (normalized + offset).coerceIn(0f, 1f) * 1.7f
+            bar.scaleY = scale
+        }
+    }
+
+    /** 停止语音输入 */
+    private fun stopVoiceInput() {
+        speechRecognizer?.stopListening()
+        speechRecognizer?.cancel()
+        dismissVoiceDialog()
+    }
+
+    /** 关闭语音对话框并清理动画 */
+    private fun dismissVoiceDialog() {
+        pulseAnimator1?.cancel()
+        pulseAnimator2?.cancel()
+        voiceDialog?.dismiss()
+        voiceDialog = null
+        // 重置音波条
+        for (bar in waveBars) {
+            bar.scaleY = 1.0f
+        }
+    }
+
+    // ==================== 语音识别结束 ====================
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -100,7 +278,7 @@ class CaptureCompleteFragment : Fragment() {
             activity.startRetake("batchNumber", DrugEntryStep.COMPLETION)
         }
 
-        // 语音输入：每个字段的麦克风按钮
+        // 语音输入：每个字段的麦克风按钮 → 改用 SpeechRecognizer + 自定义对话框
         binding.drugNameVoice.setOnClickListener { startVoiceInput("drugName") }
         binding.expiryVoice.setOnClickListener { startVoiceInput("expiryDate") }
         binding.manufacturerVoice.setOnClickListener { startVoiceInput("manufacturer") }
@@ -119,28 +297,46 @@ class CaptureCompleteFragment : Fragment() {
         binding.debugRawOcr.visibility = if (session.rawOcrText.isNotBlank()) View.VISIBLE else View.GONE
     }
 
-    /** 启动系统语音识别 */
+    /** 启动系统语音识别 —— 自动请求权限后使用 SpeechRecognizer + 自定义动画 */
     private fun startVoiceInput(fieldKey: String) {
         voiceFieldKey = fieldKey
+        // 检查录音权限
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        doStartVoiceInput(fieldKey)
+    }
+
+    /** 已有权限，执行语音输入 */
+    private fun doStartVoiceInput(fieldKey: String) {
+        voiceFieldKey = fieldKey
+
+        // 创建 SpeechRecognizer（如果尚未创建或已被销毁）
+        if (speechRecognizer == null) {
+            speechRecognizer = createSpeechRecognizer()
+        }
+
+        // 显示自定义动画对话框
+        showVoiceDialog(fieldKey)
+
+        // 启动识别
         try {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            val intent = Intent().apply {
                 putExtra(
                     RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                     RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
                 )
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-                putExtra(
-                    RecognizerIntent.EXTRA_PROMPT,
-                    "请说出${getFieldLabel(fieldKey)}"
-                )
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             }
-            voiceInputLauncher.launch(intent)
-        } catch (_: ActivityNotFoundException) {
-            Toast.makeText(
-                requireContext(),
-                R.string.voice_input_not_available,
-                Toast.LENGTH_SHORT
-            ).show()
+            speechRecognizer?.startListening(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "SpeechRecognizer start failed", e)
+            Toast.makeText(requireContext(), "语音识别启动失败", Toast.LENGTH_SHORT).show()
+            dismissVoiceDialog()
         }
     }
 
@@ -389,6 +585,10 @@ class CaptureCompleteFragment : Fragment() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // 清理语音识别资源
+        stopVoiceInput()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
         llmExecutor.shutdown()
     }
 

@@ -82,6 +82,10 @@
     <string name="voice_input_label">语音输入</string>
     <string name="voice_input_hint">语音输入药名</string>
     <string name="voice_input_not_available">当前设备不支持语音输入</string>
+    <string name="voice_listening">正在聆听…</string>
+    <string name="voice_cancel">取消</string>
+    <string name="voice_error">语音识别出错，请重试</string>
+    <string name="voice_no_permission">需要录音权限才能使用语音输入</string>
 
     <!-- 调试 -->
     <string name="view_raw_ocr">查看识别原文 →</string>
