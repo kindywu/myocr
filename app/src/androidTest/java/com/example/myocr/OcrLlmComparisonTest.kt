@@ -64,7 +64,7 @@ class OcrLlmComparisonTest {
             val llmResult = client.extractDrugInfo(
                 rawText = ocrResult.fullText,
                 ocrLines = ocrResult.lines,
-                voiceInputDrugName = ""
+                userVoiceText = ""
             )
             Log.i(TAG, "【LLM 提取结果】━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             Log.i(TAG, "药品名称: ${llmResult.drugInfo.drugName}")
@@ -111,7 +111,7 @@ class OcrLlmComparisonTest {
             val llmResult = client.extractDrugInfo(
                 rawText = ocrResult.fullText,
                 ocrLines = ocrResult.lines,
-                voiceInputDrugName = ""
+                userVoiceText = ""
             )
             Log.i(TAG, "【LLM 提取结果】━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             Log.i(TAG, "药品名称: ${llmResult.drugInfo.drugName}")

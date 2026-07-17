@@ -566,13 +566,13 @@ class DeepSeekClient(
      *
      * @param rawText  ML Kit OCR 原始识别文本
      * @param ocrLines OCR 逐行识别结果（含位置信息），为空则走无位置路径
-     * @param voiceInputDrugName 用户语音输入的药品名称（辅助 LLM 判断）
+     * @param userVoiceText 用户语音补充文本（与 OCR 文本一起发给 LLM 参考）
      * @return [Result]，其中 [allCandidates] 包含全部 5 个字段
      */
     fun extractDrugInfo(
         rawText: String,
         ocrLines: List<OcrLine> = emptyList(),
-        voiceInputDrugName: String = ""
+        userVoiceText: String = ""
     ): Result {
         if (rawText.isBlank()) {
             return Result(false, error = "OCR 文本为空")
@@ -581,10 +581,10 @@ class DeepSeekClient(
         return try {
             // 1️⃣ 格式化用户消息
             val formattedText = if (ocrLines.isNotEmpty()) {
-                formatPositionalUserMessage(ocrLines, voiceInputDrugName)
+                formatPositionalUserMessage(ocrLines, userVoiceText)
             } else {
                 val filtered = DrugOcrParser.preFilter(rawText)
-                formatSimpleUserMessage(filtered, voiceInputDrugName)
+                formatSimpleUserMessage(filtered, userVoiceText)
             }
 
             // 2️⃣ 动态构建全字段 system prompt（基于 FIELD_DEFINITIONS）
@@ -623,14 +623,14 @@ class DeepSeekClient(
      * @param fieldKey 字段 key（如 "drugName"），必须存在于 [FIELD_DEFINITIONS]
      * @param rawText  ML Kit OCR 原始识别文本
      * @param ocrLines OCR 逐行识别结果（含位置信息），为空则走无位置路径
-     * @param voiceInputDrugName 用户语音输入的药品名称（辅助 LLM 判断）
+     * @param userVoiceText 用户语音补充文本（与 OCR 文本一起发给 LLM 参考）
      * @return 该字段的候选列表，可直接取 [bestValue] 获取文本
      */
     fun extractSingleField(
         fieldKey: String,
         rawText: String,
         ocrLines: List<OcrLine> = emptyList(),
-        voiceInputDrugName: String = ""
+        userVoiceText: String = ""
     ): FieldCandidates {
         if (!FIELD_DEFINITIONS.containsKey(fieldKey)) {
             throw IllegalArgumentException("未知字段 key: $fieldKey，可用: ${FIELD_DEFINITIONS.keys}")
@@ -642,10 +642,10 @@ class DeepSeekClient(
             // 1️⃣ 格式化用户消息（指定字段名，LLM 就不会返回无关字段）
             val fieldLabel = FIELD_DEFINITIONS[fieldKey]?.labelCn ?: ""
             val formattedText = if (ocrLines.isNotEmpty()) {
-                formatPositionalUserMessage(ocrLines, voiceInputDrugName, fieldLabel)
+                formatPositionalUserMessage(ocrLines, userVoiceText, fieldLabel)
             } else {
                 val filtered = DrugOcrParser.preFilter(rawText)
-                formatSimpleUserMessage(filtered, voiceInputDrugName, fieldLabel)
+                formatSimpleUserMessage(filtered, userVoiceText, fieldLabel)
             }
 
             // 2️⃣ 动态构建单字段 system prompt
