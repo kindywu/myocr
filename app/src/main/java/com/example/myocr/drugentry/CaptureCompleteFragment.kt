@@ -45,9 +45,6 @@ class CaptureCompleteFragment : Fragment() {
     /** 当前正在语音输入的字段 key */
     private var voiceFieldKey: String = ""
 
-    /** 当前语音输入是否由 LLM 提取触发（false 为 🎤 按钮触发） */
-    private var voiceSourceIsLlmExtraction: Boolean = false
-
     // ==================== 语音识别（SpeechRecognizer + 自定义动画对话框） ====================
 
     /** SpeechRecognizer 实例 */
@@ -345,22 +342,10 @@ class CaptureCompleteFragment : Fragment() {
 
     /** 语音识别成功后的处理 */
     private fun onVoiceResult(fieldKey: String, spokenText: String) {
-        val isLlmExtraction = voiceSourceIsLlmExtraction
-        voiceSourceIsLlmExtraction = false // 标志是一次性的，消费后立即复位
-        if (isLlmExtraction) {
-            // LLM 提取路径：弹出确认对话框让用户决定采纳还是放弃
-            showVoiceConfirmForLlm(fieldKey, spokenText)
-        } else {
-            // 🎤 按钮路径：保持现有行为不变
-            handleVoiceDirectReplace(fieldKey, spokenText)
-        }
-    }
-
-    /** 🎤 按钮路径：现有行为（直接替换/对比确认），不走 LLM */
-    private fun handleVoiceDirectReplace(fieldKey: String, spokenText: String) {
         val activity = requireActivity() as DrugEntryActivity
         val current = activity.session.drugInfo
 
+        // 获取当前字段值
         val currentValue: String = when (fieldKey) {
             "drugName" -> current.drugName
             "expiryDate" -> current.expiryDate
@@ -369,61 +354,21 @@ class CaptureCompleteFragment : Fragment() {
             else -> ""
         }
 
+        // 情况 1：当前字段为空 → 直接填入语音结果
         if (currentValue.isBlank()) {
             applyVoiceResult(activity, fieldKey, spokenText)
             return
         }
 
+        // 情况 2：语音结果与当前值完全相同 → 无需操作
         if (spokenText == currentValue) {
             Toast.makeText(requireContext(),
                 "语音识别结果与 OCR 一致", Toast.LENGTH_SHORT).show()
             return
         }
 
+        // 情况 3：有差异 → 弹出确认对话框让用户选择
         showVoiceConfirmDialog(activity, fieldKey, currentValue, spokenText)
-    }
-
-    /** LLM 路径：显示语音文本确认对话框 */
-    private fun showVoiceConfirmForLlm(fieldKey: String, spokenText: String) {
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setTitle("语音识别结果 — ${getFieldLabel(fieldKey)}")
-            .setMessage(spokenText)
-            .setPositiveButton("采纳") { _, _ ->
-                val activity = requireActivity() as DrugEntryActivity
-                // 存入语音文本
-                activity.updateSession { session ->
-                    session.copy(
-                        fieldVoiceInputs = session.fieldVoiceInputs + (fieldKey to spokenText)
-                    )
-                }
-                // 执行 LLM 提取（带语音文本）
-                val voiceText = spokenText
-                val client = deepSeekClient ?: return@setPositiveButton
-                val rawText = activity.session.rawOcrText
-                val valueView = findValueView(fieldKey) ?: return@setPositiveButton
-                doLlmExtraction(activity, fieldKey, valueView, client, rawText, voiceText)
-            }
-            .setNegativeButton("放弃") { _, _ ->
-                // 走 LLM 提取（无语音文本）
-                val activity = requireActivity() as DrugEntryActivity
-                val client = deepSeekClient ?: return@setNegativeButton
-                val rawText = activity.session.rawOcrText
-                val valueView = findValueView(fieldKey) ?: return@setNegativeButton
-                doLlmExtraction(activity, fieldKey, valueView, client, rawText, "")
-            }
-            .setCancelable(false)
-            .show()
-    }
-
-    /** 根据 fieldKey 找到对应的字段值 View */
-    private fun findValueView(fieldKey: String): View? {
-        return when (fieldKey) {
-            "drugName" -> binding.drugNameValue
-            "expiryDate" -> binding.expiryValue
-            "manufacturer" -> binding.manufacturerValue
-            "batchNumber" -> binding.batchValue
-            else -> null
-        }
     }
 
     /** 直接应用语音结果到字段 */
@@ -546,11 +491,10 @@ class CaptureCompleteFragment : Fragment() {
     // ==================== 单字段 LLM 提取 ====================
 
     /**
-     * 启动单字段 LLM 提取（含可选语音补充）
+     * 启动单字段 LLM 提取
      *
-     * 先弹「是否添加语音补充？」对话框：
-     * - 是 → 启动 STT，语音文本确认后与 OCR 文本一起发给 LLM
-     * - 否 → 仅 OCR 文本，现有行为不变
+     * 用户在补全页点击字段值时触发，对该字段单独调用一次 DeepSeek API，
+     * 提取结果只更新当前字段，不影响其他字段已有值。
      */
     private fun startSingleFieldExtraction(
         activity: DrugEntryActivity,
@@ -564,46 +508,12 @@ class CaptureCompleteFragment : Fragment() {
             return
         }
 
-        // 弹「是否添加语音补充」对话框
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setTitle("${getFieldLabel(fieldKey)} — LLM 重新提取")
-            .setMessage("是否添加语音补充来辅助识别？")
-            .setPositiveButton("是") { _, _ ->
-                // 启动语音输入（标记为 LLM 提取路径）
-                voiceSourceIsLlmExtraction = true
-                startVoiceInput(fieldKey)
-            }
-            .setNegativeButton("否") { _, _ ->
-                // 走原有 LLM 提取（无语音）
-                doLlmExtraction(activity, fieldKey, valueView, client, rawText, "")
-            }
-            .setCancelable(false)
-            .show()
-    }
-
-    /**
-     * 执行 LLM 提取并更新 UI
-     *
-     * @param voiceText 用户语音补充文本（可能为空）
-     */
-    private fun doLlmExtraction(
-        activity: DrugEntryActivity,
-        fieldKey: String,
-        valueView: View,
-        client: DeepSeekClient,
-        rawText: String,
-        voiceText: String
-    ) {
         valueView.isClickable = false
         (valueView as? android.widget.TextView)?.text = "提取中…"
 
         llmExecutor.execute {
             try {
-                val fc = client.extractSingleField(
-                    fieldKey = fieldKey,
-                    rawText = rawText,
-                    userVoiceText = voiceText
-                )
+                val fc = client.extractSingleField(fieldKey, rawText)
                 val newValue = fc.bestValue
 
                 activity.runOnUiThread {
@@ -640,13 +550,6 @@ class CaptureCompleteFragment : Fragment() {
                         Toast.makeText(requireContext(),
                             "LLM 无法提取该字段", Toast.LENGTH_SHORT).show()
                     }
-
-                    // 清理该字段的语音文本
-                    activity.updateSession { session ->
-                        session.copy(
-                            fieldVoiceInputs = session.fieldVoiceInputs - fieldKey
-                        )
-                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Single-field extraction [$fieldKey] failed", e)
@@ -662,12 +565,6 @@ class CaptureCompleteFragment : Fragment() {
                         }
                     }
                     valueView.isClickable = deepSeekClient != null
-                    // 清理该字段的语音文本
-                    activity.updateSession { session ->
-                        session.copy(
-                            fieldVoiceInputs = session.fieldVoiceInputs - fieldKey
-                        )
-                    }
                     Toast.makeText(requireContext(),
                         "提取失败: ${e.message?.take(50)}", Toast.LENGTH_SHORT).show()
                 }

@@ -1,13 +1,23 @@
 package com.example.myocr.drugentry
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.example.myocr.OcrEngine
 import com.example.myocr.OcrLine
@@ -22,6 +32,9 @@ import java.util.concurrent.Executors
  * 拍照后显示全屏图片，用户通过拖拽选择矩形识别区域。
  * 确认后对选区进行 OCR 识别，然后调用 DeepSeek LLM 提取结构化药品信息，
  * 最后跳转到补全页展示结果。
+ *
+ * 在 OCR 识别完成后、LLM 提取之前，弹窗询问是否添加语音补充（可选）。
+ * 用户可选择说话补充信息，语音文本经确认后与 OCR 文本一起发给 LLM。
  */
 class CropFragment : Fragment() {
 
@@ -35,6 +48,154 @@ class CropFragment : Fragment() {
     private var ocrEngine: OcrEngine? = null
     private var deepSeekClient: DeepSeekClient? = null
     private var sourceBitmap: android.graphics.Bitmap? = null
+
+    // ==================== 语音识别 ====================
+
+    private var speechRecognizer: SpeechRecognizer? = null
+    /** 语音输入期间的临时对话框 */
+    private var voiceListeningDialog: androidx.appcompat.app.AlertDialog? = null
+    /** 语音补充确认后的回调 */
+    private var onVoiceCompleted: ((String) -> Unit)? = null
+
+    private val recordAudioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            doStartVoiceInput()
+        } else {
+            Toast.makeText(requireContext(), R.string.voice_no_permission, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun createSpeechRecognizer(): SpeechRecognizer {
+        val recognizer = SpeechRecognizer.createSpeechRecognizer(requireContext())
+        recognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onEndOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    voiceListeningDialog?.findViewById<TextView>(R.id.partialResult)?.text = matches[0]
+                }
+            }
+
+            override fun onResults(results: Bundle?) {
+                dismissVoiceListeningDialog()
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    showVoiceConfirmDialog(matches[0])
+                } else {
+                    Toast.makeText(requireContext(), "未听清，请重试", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onError(error: Int) {
+                dismissVoiceListeningDialog()
+                val message = when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH -> "未听清，请重试"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有说话，已超时"
+                    SpeechRecognizer.ERROR_AUDIO -> "录音失败"
+                    SpeechRecognizer.ERROR_CLIENT -> "语音识别服务异常"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少录音权限"
+                    SpeechRecognizer.ERROR_NETWORK -> "网络不可用"
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "网络超时"
+                    SpeechRecognizer.ERROR_SERVER -> "服务端错误"
+                    else -> "识别出错 ($error)"
+                }
+                if (isAdded) {
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        return recognizer
+    }
+
+    /** 启动语音输入（需先有权限） */
+    private fun startVoiceInput(callback: (String) -> Unit) {
+        onVoiceCompleted = callback
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        doStartVoiceInput()
+    }
+
+    private fun doStartVoiceInput() {
+        if (speechRecognizer == null) {
+            speechRecognizer = createSpeechRecognizer()
+        }
+
+        showVoiceListeningDialog()
+
+        try {
+            val intent = Intent().apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            }
+            speechRecognizer?.startListening(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "SpeechRecognizer start failed", e)
+            Toast.makeText(requireContext(), "语音识别启动失败", Toast.LENGTH_SHORT).show()
+            dismissVoiceListeningDialog()
+        }
+    }
+
+    /** 显示"正在聆听…"对话框 */
+    private fun showVoiceListeningDialog() {
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_voice_input, null)
+
+        // 隐藏不需要的元素（脉冲环动画等），只保留文字
+        dialogView.findViewById<View>(R.id.pulseRing1)?.visibility = View.GONE
+        dialogView.findViewById<View>(R.id.pulseRing2)?.visibility = View.GONE
+        dialogView.findViewById<View>(R.id.waveContainer)?.visibility = View.GONE
+        dialogView.findViewById<View>(R.id.micContainer)?.visibility = View.GONE
+
+        voiceListeningDialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+            .setView(dialogView)
+            .setCancelable(true)
+            .setOnCancelListener { stopVoiceInput() }
+            .show()
+    }
+
+    private fun dismissVoiceListeningDialog() {
+        voiceListeningDialog?.dismiss()
+        voiceListeningDialog = null
+    }
+
+    private fun stopVoiceInput() {
+        speechRecognizer?.stopListening()
+        speechRecognizer?.cancel()
+        dismissVoiceListeningDialog()
+    }
+
+    /** 语音识别结果确认对话框 */
+    private fun showVoiceConfirmDialog(spokenText: String) {
+        if (!isAdded) return
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+            .setTitle("语音识别结果")
+            .setMessage(spokenText)
+            .setPositiveButton("采纳") { _, _ ->
+                onVoiceCompleted?.invoke(spokenText)
+                onVoiceCompleted = null
+            }
+            .setNegativeButton("放弃") { _, _ ->
+                onVoiceCompleted?.invoke("")
+                onVoiceCompleted = null
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    // ==================== 生命周期 ====================
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -73,7 +234,6 @@ class CropFragment : Fragment() {
             val cropped = binding.cropOverlay.cropBitmap()
             if (cropped == null) {
                 Log.w(TAG, "Crop region too small, using full image")
-                // 选区过小，用整图
                 val photoFile = File(photoPath)
                 processFullImage(activity, photoFile)
             } else {
@@ -94,7 +254,6 @@ class CropFragment : Fragment() {
             } catch (e: Exception) {
                 Log.e(TAG, "OCR init failed", e)
             }
-            // 同时初始化 DeepSeek LLM 客户端（未配置 Key 时返回 null）
             try {
                 deepSeekClient = DeepSeekClient.create(requireContext())
                 if (deepSeekClient != null) {
@@ -170,57 +329,102 @@ class CropFragment : Fragment() {
     }
 
     /**
-     * 处理 OCR 结果 → 调用 LLM 提取字段 → 更新 session → 导航
+     * 处理 OCR 结果 → 询问是否语音补充 → LLM 提取 → 导航
      *
-     * 提取策略：
-     * 1. 先全字段提取（一次 API 调用）
-     * 2. 对空字段逐个单字段补提（精准兜底）
-     * 3. LLM 不可用或失败时跳过，字段留空供手动填写
+     * OCR 识别完成后，先保存 OCR 文本到 session，然后在 UI 线程弹窗询问用户
+     * 是否需要添加语音补充。根据用户选择决定是否启动语音识别，最后将
+     * OCR 文本（+ 可选语音文本）发给 LLM 提取结构化信息。
      */
     private fun handleOcrResult(activity: DrugEntryActivity, rawText: String, ocrLines: List<OcrLine>, photoPath: String) {
         Log.d(TAG, "OCR result: ${rawText.take(100)}, lines: ${ocrLines.size}")
 
         activity.updateSession { it.copy(rawOcrText = rawText) }
 
-        // DeepSeek LLM 提取
         val client = deepSeekClient
-        if (client != null && rawText.isNotBlank()) {
+        if (client == null || rawText.isBlank()) {
+            Log.d(TAG, "LLM not available or blank text — fields left for manual entry")
+            navigateAfterOcr(activity)
+            return
+        }
+
+        // 切换到 UI 线程弹窗询问是否语音补充
+        activity.runOnUiThread {
+            if (!isAdded) return@runOnUiThread
+
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+                .setTitle("语音补充")
+                .setMessage("是否添加语音补充来辅助识别？")
+                .setPositiveButton("是") { _, _ ->
+                    // 启动语音输入，完成后继续 LLM 提取
+                    startVoiceInput { voiceText ->
+                        proceedWithLlm(activity, client, rawText, ocrLines, voiceText)
+                    }
+                }
+                .setNegativeButton("否") { _, _ ->
+                    proceedWithLlm(activity, client, rawText, ocrLines, "")
+                }
+                .setCancelable(false)
+                .show()
+        }
+    }
+
+    /**
+     * 执行 LLM 提取 → 更新 session → 导航
+     *
+     * @param voiceText 用户语音补充文本（可能为空字符串）
+     */
+    private fun proceedWithLlm(
+        activity: DrugEntryActivity,
+        client: DeepSeekClient,
+        rawText: String,
+        ocrLines: List<OcrLine>,
+        voiceText: String
+    ) {
+        if (voiceText.isNotBlank()) {
+            // 存入已采纳的语音文本
+            activity.updateSession { session ->
+                session.copy(fieldVoiceInputs = mapOf("_global" to voiceText))
+            }
+        }
+
+        // 切到后台线程执行 LLM API 调用
+        ocrExecutor.execute {
             try {
-                llmExtractDrugInfo(activity, client, rawText, ocrLines)
+                llmExtractDrugInfo(activity, client, rawText, ocrLines, voiceText)
             } catch (e: Exception) {
                 Log.e(TAG, "LLM extraction failed, fields left for manual entry", e)
             }
-        } else {
-            Log.d(TAG, "LLM not available — fields left for manual entry")
+            navigateAfterOcr(activity)
         }
-
-        navigateAfterOcr(activity)
     }
 
     /**
      * DeepSeek LLM 提取药品信息（全字段提取）
      *
-     * 仅做一次全字段 API 调用。单字段提取由用户在补全页点击字段时触发。
+     * @param voiceText 用户语音补充文本（可选，为空则仅 OCR）
      */
     private fun llmExtractDrugInfo(
         activity: DrugEntryActivity,
         client: DeepSeekClient,
         rawText: String,
-        ocrLines: List<OcrLine>
+        ocrLines: List<OcrLine>,
+        voiceText: String = ""
     ) {
-        val fullResult = client.extractDrugInfo(rawText, ocrLines)
+        val fullResult = client.extractDrugInfo(rawText, ocrLines, userVoiceText = voiceText)
         Log.d(TAG, "Full extraction: success=${fullResult.success}, " +
                 "drugName=[${fullResult.drugInfo.drugName}] " +
                 "expiry=[${fullResult.drugInfo.expiryDate}] " +
                 "mfg=[${fullResult.drugInfo.manufacturer}] " +
                 "batch=[${fullResult.drugInfo.batchNumber}]")
 
+        if (voiceText.isNotBlank()) {
+            Log.d(TAG, "Voice text provided: [$voiceText] (${voiceText.length} chars)")
+        }
+
         val info = fullResult.drugInfo
         val llmJson = if (fullResult.success) fullResult.rawApiResponse else ""
 
         // 更新 session
-        // - 重拍模式: 只更新目标字段，保留其他已有值
-        // - 普通模式: 全字段合并
         activity.updateSession { session ->
             val targetField = session.retakeFieldTarget
             val finalInfo: DrugInfo
@@ -266,7 +470,6 @@ class CropFragment : Fragment() {
         activity.runOnUiThread {
             if (!isAdded) return@runOnUiThread
 
-            // 重拍模式 → 跳回重拍来源页；否则 → 补全页
             val nextStep = if (activity.isRetakeMode()) {
                 activity.getRetakeSource() ?: DrugEntryStep.COMPLETION
             } else {
@@ -284,6 +487,9 @@ class CropFragment : Fragment() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopVoiceInput()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
         ocrExecutor.shutdown()
         ocrEngine?.close()
         sourceBitmap?.recycle()
