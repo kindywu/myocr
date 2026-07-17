@@ -397,7 +397,7 @@ class CaptureCompleteFragment : Fragment() {
                     )
                 }
                 // 执行 LLM 提取（带语音文本）
-                val voiceText = activity.session.fieldVoiceInputs[fieldKey] ?: ""
+                val voiceText = spokenText
                 val client = deepSeekClient ?: return@setPositiveButton
                 val rawText = activity.session.rawOcrText
                 val valueView = findValueView(fieldKey) ?: return@setPositiveButton
@@ -662,6 +662,12 @@ class CaptureCompleteFragment : Fragment() {
                         }
                     }
                     valueView.isClickable = deepSeekClient != null
+                    // 清理该字段的语音文本
+                    activity.updateSession { session ->
+                        session.copy(
+                            fieldVoiceInputs = session.fieldVoiceInputs - fieldKey
+                        )
+                    }
                     Toast.makeText(requireContext(),
                         "提取失败: ${e.message?.take(50)}", Toast.LENGTH_SHORT).show()
                 }
