@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <!-- 当前 OCR 识别值 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="OCR 识别值"
+        android:textSize="12sp"
+        android:textColor="@color/text_tertiary" />
+
+    <TextView
+        android:id="@+id/currentValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="15sp"
+        android:textColor="@color/text_primary"
+        android:background="@drawable/voice_input_bg"
+        android:padding="12dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="16dp" />
+
+    <!-- 语音识别值 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="语音识别值"
+        android:textSize="12sp"
+        android:textColor="@color/success_green" />
+
+    <TextView
+        android:id="@+id/voiceValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="15sp"
+        android:textColor="@color/text_primary"
+        android:textStyle="bold"
+        android:background="@drawable/voice_input_bg"
+        android:padding="12dp"
+        android:layout_marginTop="4dp" />
+
+</LinearLayout>

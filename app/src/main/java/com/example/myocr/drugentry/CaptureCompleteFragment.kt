@@ -345,18 +345,71 @@ class CaptureCompleteFragment : Fragment() {
         val activity = requireActivity() as DrugEntryActivity
         val current = activity.session.drugInfo
 
-        // 更新对应字段的值
+        // 获取当前字段值
+        val currentValue: String = when (fieldKey) {
+            "drugName" -> current.drugName
+            "expiryDate" -> current.expiryDate
+            "manufacturer" -> current.manufacturer
+            "batchNumber" -> current.batchNumber
+            else -> ""
+        }
+
+        // 情况 1：当前字段为空 → 直接填入语音结果
+        if (currentValue.isBlank()) {
+            applyVoiceResult(activity, fieldKey, spokenText)
+            return
+        }
+
+        // 情况 2：语音结果与当前值完全相同 → 无需操作
+        if (spokenText == currentValue) {
+            Toast.makeText(requireContext(),
+                "语音识别结果与 OCR 一致", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 情况 3：有差异 → 弹出确认对话框让用户选择
+        showVoiceConfirmDialog(activity, fieldKey, currentValue, spokenText)
+    }
+
+    /** 直接应用语音结果到字段 */
+    private fun applyVoiceResult(activity: DrugEntryActivity, fieldKey: String, value: String) {
+        val current = activity.session.drugInfo
         val updated = when (fieldKey) {
-            "drugName" -> current.copy(drugName = spokenText)
-            "expiryDate" -> current.copy(expiryDate = spokenText)
-            "manufacturer" -> current.copy(manufacturer = spokenText)
-            "batchNumber" -> current.copy(batchNumber = spokenText)
+            "drugName" -> current.copy(drugName = value)
+            "expiryDate" -> current.copy(expiryDate = value)
+            "manufacturer" -> current.copy(manufacturer = value)
+            "batchNumber" -> current.copy(batchNumber = value)
             else -> current
         }
         activity.updateDrugInfo(updated, FieldStatus.MANUAL)
-        // 刷新页面
         updateFieldStatus(activity, activity.session)
         updateProgress(activity.session)
+    }
+
+    /** 显示语音结果 vs OCR 值对比确认对话框 */
+    private fun showVoiceConfirmDialog(
+        activity: DrugEntryActivity,
+        fieldKey: String,
+        currentValue: String,
+        spokenText: String
+    ) {
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_voice_confirm, null)
+
+        dialogView.findViewById<TextView>(R.id.currentValue).text = currentValue
+        dialogView.findViewById<TextView>(R.id.voiceValue).text = spokenText
+
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+            .setTitle("语音识别结果 — ${getFieldLabel(fieldKey)}")
+            .setView(dialogView)
+            .setPositiveButton("替换") { _, _ ->
+                applyVoiceResult(activity, fieldKey, spokenText)
+            }
+            .setNegativeButton("保留") { _, _ ->
+                // 什么都不做，保留原值
+            }
+            .setCancelable(true)
+            .show()
     }
 
     private fun updateProgress(session: DrugEntrySession) {
