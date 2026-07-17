@@ -14,6 +14,7 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -58,6 +59,22 @@ class SingleFieldCropFragment : Fragment() {
     /** 语音补充确认后的回调 */
     private var onVoiceCompleted: ((String) -> Unit)? = null
 
+    /** 音波可视化条 */
+    private val waveBars = mutableListOf<View>()
+    /** 脉冲环视图引用 */
+    private var pulseRing1View: View? = null
+    private var pulseRing2View: View? = null
+    /** 脉冲环动画 */
+    private var pulseAnimator1: android.animation.Animator? = null
+    private var pulseAnimator2: android.animation.Animator? = null
+
+    /** 用户是否正在说话（控制动画启停） */
+    private var isSpeaking = false
+
+    /** 逐字打印相关 */
+    private var lastPartialText = ""
+    private var typewriterRunnable: Runnable? = null
+
     private val recordAudioPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -72,14 +89,31 @@ class SingleFieldCropFragment : Fragment() {
         val recognizer = SpeechRecognizer.createSpeechRecognizer(requireContext())
         recognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
-            override fun onEndOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
+
+            override fun onBeginningOfSpeech() {
+                // 检测到用户开始说话 → 启动脉冲环动画、激活音波条
+                isSpeaking = true
+                startPulseAnimations()
+            }
+
+            override fun onEndOfSpeech() {
+                // 用户停止说话 → 暂停动画、重置音波条
+                isSpeaking = false
+                stopPulseAnimations()
+                resetWaveBars()
+            }
+
+            override fun onRmsChanged(rmsdB: Float) {
+                if (isSpeaking) {
+                    updateWaveBars(rmsdB)
+                }
+            }
+
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onPartialResults(partialResults: Bundle?) {
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
-                    voiceListeningDialog?.findViewById<TextView>(R.id.partialResult)?.text = matches[0]
+                    typewriterPartialText(matches[0])
                 }
             }
 
@@ -149,16 +183,32 @@ class SingleFieldCropFragment : Fragment() {
         }
     }
 
-    /** 显示"正在聆听…"对话框 */
+    /** 显示"正在聆听…"对话框（初始无动画，声音触发后激活） */
     private fun showVoiceListeningDialog() {
         val dialogView = LayoutInflater.from(requireContext())
             .inflate(R.layout.dialog_voice_input, null)
 
-        // 隐藏不需要的元素（脉冲环动画等），只保留文字
-        dialogView.findViewById<View>(R.id.pulseRing1)?.visibility = View.GONE
-        dialogView.findViewById<View>(R.id.pulseRing2)?.visibility = View.GONE
-        dialogView.findViewById<View>(R.id.waveContainer)?.visibility = View.GONE
-        dialogView.findViewById<View>(R.id.micContainer)?.visibility = View.GONE
+        // 收集音波条
+        waveBars.clear()
+        waveBars.addAll(
+            listOf(
+                dialogView.findViewById(R.id.waveBar1),
+                dialogView.findViewById(R.id.waveBar2),
+                dialogView.findViewById(R.id.waveBar3),
+                dialogView.findViewById(R.id.waveBar4),
+                dialogView.findViewById(R.id.waveBar5),
+            )
+        )
+
+        // 保存脉冲环视图引用（供开始/停止说话时启停动画）
+        pulseRing1View = dialogView.findViewById(R.id.pulseRing1)
+        pulseRing2View = dialogView.findViewById(R.id.pulseRing2)
+        // 初始时脉冲环不可见，等用户说话才出现
+        pulseRing1View?.alpha = 0f
+        pulseRing2View?.alpha = 0f
+
+        // 取消按钮
+        dialogView.findViewById<Button>(R.id.cancelButton).setOnClickListener { stopVoiceInput() }
 
         voiceListeningDialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
             .setView(dialogView)
@@ -167,9 +217,112 @@ class SingleFieldCropFragment : Fragment() {
             .show()
     }
 
+    /** 用户开始说话 → 启动脉冲环动画 */
+    private fun startPulseAnimations() {
+        val r1 = pulseRing1View ?: return
+        val r2 = pulseRing2View ?: return
+        stopPulseAnimations() // 防止重复启动
+        pulseAnimator1 = buildPulseAnimation(r1, 1200, 1.0f, 1.8f)
+        pulseAnimator2 = buildPulseAnimation(r2, 1200, 1.0f, 1.4f)
+    }
+
+    /** 用户停止说话 → 暂停脉冲环动画、淡出环体 */
+    private fun stopPulseAnimations() {
+        pulseAnimator1?.cancel()
+        pulseAnimator1 = null
+        pulseAnimator2?.cancel()
+        pulseAnimator2 = null
+        pulseRing1View?.animate()?.alpha(0f)?.setDuration(200)?.start()
+        pulseRing2View?.animate()?.alpha(0f)?.setDuration(200)?.start()
+    }
+
+    /** 构建并启动脉冲环动画 */
+    private fun buildPulseAnimation(
+        view: View,
+        duration: Long,
+        fromScale: Float,
+        toScale: Float
+    ): android.animation.Animator {
+        // 先让环可见
+        view.alpha = 0.6f
+
+        val scaleX = android.animation.ObjectAnimator.ofFloat(view, View.SCALE_X, fromScale, toScale).apply {
+            this.duration = duration
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            repeatMode = android.animation.ValueAnimator.RESTART
+        }
+        val scaleY = android.animation.ObjectAnimator.ofFloat(view, View.SCALE_Y, fromScale, toScale).apply {
+            this.duration = duration
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            repeatMode = android.animation.ValueAnimator.RESTART
+        }
+        val alpha = android.animation.ObjectAnimator.ofFloat(view, View.ALPHA, 0.6f, 0.0f).apply {
+            this.duration = duration
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            repeatMode = android.animation.ValueAnimator.RESTART
+        }
+        val set = android.animation.AnimatorSet().apply { playTogether(scaleX, scaleY, alpha) }
+        set.start()
+        return set
+    }
+
+    /** 逐字打印语音识别中间结果 */
+    private fun typewriterPartialText(newText: String) {
+        val textView = voiceListeningDialog?.findViewById<TextView>(R.id.partialResult) ?: return
+
+        // 取消上次未完成的逐字打印
+        typewriterRunnable?.let { textView.removeCallbacks(it) }
+        typewriterRunnable = null
+
+        if (newText.startsWith(lastPartialText) && lastPartialText.isNotEmpty()) {
+            // 平滑扩展：只打印新增的字
+            var charIndex = lastPartialText.length
+            val runnable = object : Runnable {
+                override fun run() {
+                    if (charIndex < newText.length) {
+                        textView.text = newText.substring(0, charIndex + 1)
+                        charIndex++
+                        textView.postDelayed(this, 25L)
+                    }
+                }
+            }
+            typewriterRunnable = runnable
+            textView.post(runnable)
+        } else {
+            // 识别引擎修正了之前的结果（完全不同），直接显示
+            textView.text = newText
+        }
+        lastPartialText = newText
+    }
+
+    /** 根据音量更新音波条高度 */
+    private fun updateWaveBars(rmsdB: Float) {
+        val normalized = (rmsdB / 12.0f).coerceIn(0f, 1f)
+        for ((i, bar) in waveBars.withIndex()) {
+            val offset = ((i - 2) * 0.12f)
+            val scale = 0.3f + (normalized + offset).coerceIn(0f, 1f) * 1.7f
+            bar.scaleY = scale
+        }
+    }
+
+    private fun resetWaveBars() {
+        for (bar in waveBars) {
+            bar.scaleY = 1.0f
+        }
+    }
+
     private fun dismissVoiceListeningDialog() {
+        typewriterRunnable?.let { voiceListeningDialog?.findViewById<TextView>(R.id.partialResult)?.removeCallbacks(it) }
+        typewriterRunnable = null
+        stopPulseAnimations()
         voiceListeningDialog?.dismiss()
         voiceListeningDialog = null
+        resetWaveBars()
+        isSpeaking = false
+        lastPartialText = ""
     }
 
     private fun stopVoiceInput() {
@@ -352,16 +505,21 @@ class SingleFieldCropFragment : Fragment() {
         activity.runOnUiThread {
             if (!isAdded) return@runOnUiThread
 
+            Log.d(TAG, "Showing voice supplement dialog (OCR done, before LLM)")
             com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
                 .setTitle("语音补充")
                 .setMessage("是否添加语音补充来辅助识别？")
                 .setPositiveButton("是") { _, _ ->
+                    Log.d(TAG, "User chose voice supplement: YES")
                     // 启动语音输入，完成后继续 LLM 提取
                     startVoiceInput { voiceText ->
+                        val logVoice = if (voiceText.isNotBlank()) voiceText else "(用户放弃/空)"
+                        Log.d(TAG, "Voice supplement result: [$logVoice]")
                         proceedWithLlm(activity, client, rawText, ocrLines, voiceText)
                     }
                 }
                 .setNegativeButton("否") { _, _ ->
+                    Log.d(TAG, "User chose voice supplement: NO")
                     proceedWithLlm(activity, client, rawText, ocrLines, "")
                 }
                 .setCancelable(false)
@@ -411,6 +569,11 @@ class SingleFieldCropFragment : Fragment() {
         ocrLines: List<OcrLine>,
         voiceText: String = ""
     ) {
+        if (voiceText.isNotBlank()) {
+            Log.d(TAG, "LLM call WITH voice supplement: [$voiceText] (${voiceText.length} chars)")
+        } else {
+            Log.d(TAG, "LLM call WITHOUT voice supplement (OCR only)")
+        }
         val fullResult = client.extractDrugInfo(rawText, ocrLines, userVoiceText = voiceText)
         Log.d(TAG, "Full extraction: success=${fullResult.success}, " +
                 "drugName=[${fullResult.drugInfo.drugName}] " +
@@ -418,8 +581,17 @@ class SingleFieldCropFragment : Fragment() {
                 "mfg=[${fullResult.drugInfo.manufacturer}] " +
                 "batch=[${fullResult.drugInfo.batchNumber}]")
 
-        if (voiceText.isNotBlank()) {
-            Log.d(TAG, "Voice text provided: [$voiceText] (${voiceText.length} chars)")
+        val voiceInformed = fullResult.formattedInput.let { input ->
+            if (input.contains(voiceText) && voiceText.length > 2) "✓ voice adopted" else "⚠ voice NOT in prompt"
+        }
+        Log.d(TAG, "Voice supplement check: $voiceInformed")
+
+        if (!fullResult.success) {
+            val errMsg = fullResult.error.ifBlank { "LLM 提取失败" }
+            Log.w(TAG, "LLM full extraction failed: $errMsg")
+            activity.runOnUiThread {
+                if (isAdded) android.widget.Toast.makeText(activity, errMsg, android.widget.Toast.LENGTH_LONG).show()
+            }
         }
 
         val info = fullResult.drugInfo

@@ -622,7 +622,7 @@ class CaptureCompleteFragment : Fragment() {
         }
     }
 
-    /** 显示 OCR 调试对话框：展示可直接复制的原始数据（OCR 原文、API 响应） */
+    /** 显示 OCR 调试对话框：展示可直接复制的原始数据（OCR 原文、语音输入、API 响应） */
     private fun showOcrDebugDialog(activity: DrugEntryActivity) {
         val session = activity.session
         val rawText = session.rawOcrText
@@ -634,6 +634,18 @@ class CaptureCompleteFragment : Fragment() {
             sb.append(rawText)
         } else {
             sb.append("(无 OCR 原文)")
+        }
+
+        val voiceInputs = session.fieldVoiceInputs
+        if (voiceInputs.isNotEmpty()) {
+            sb.append("\n\n━━━ 语音补充输入 ━━━\n")
+            for ((fieldKey, text) in voiceInputs) {
+                val label = when (fieldKey) {
+                    "_global" -> "全局补充"
+                    else -> getFieldLabel(fieldKey)
+                }
+                sb.append("[$label] $text\n")
+            }
         }
 
         val llmJson = session.llmResponseJson

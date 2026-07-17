@@ -246,6 +246,14 @@ class CropFragment : Fragment() {
             Log.d(TAG, "Voice text provided: [$voiceText] (${voiceText.length} chars)")
         }
 
+        if (!fullResult.success) {
+            val errMsg = fullResult.error.ifBlank { "LLM 提取失败" }
+            Log.w(TAG, "LLM full extraction failed: $errMsg")
+            activity.runOnUiThread {
+                if (isAdded) android.widget.Toast.makeText(activity, errMsg, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+
         val info = fullResult.drugInfo
         val llmJson = if (fullResult.success) fullResult.rawApiResponse else ""
 

@@ -66,7 +66,11 @@ class DrugEntryActivity : AppCompatActivity() {
      * 导航到指定步骤
      */
     fun navigateTo(step: DrugEntryStep) {
-        session = session.copy(currentStep = step)
+        session = session.copy(
+            currentStep = step,
+            // 每次进入裁剪 OCR 前清空上次的语音补充，避免带入下一轮
+            fieldVoiceInputs = if (step == DrugEntryStep.CROP) emptyMap() else session.fieldVoiceInputs
+        )
         val fragment = createFragmentForStep(step)
         val tag = step.name
 
