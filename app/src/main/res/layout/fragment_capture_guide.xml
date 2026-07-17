@@ -71,39 +71,10 @@
             android:textSize="14sp"
             android:textColor="@android:color/white" />
 
-        <!-- 语音 → 拍照 → 切换摄像头 -->
+        <!-- 拍照 → 切换摄像头 -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
-
-            <!-- 语音输入按钮（左） -->
-            <RelativeLayout
-                android:id="@+id/voiceArea"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentStart="true"
-                android:layout_centerVertical="true">
-
-                <!-- 外圈 -->
-                <View
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
-                    android:background="@drawable/voice_ring_outer" />
-
-                <!-- 内圈 -->
-                <ImageButton
-                    android:id="@+id/voiceInputButton"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:layout_centerInParent="true"
-                    android:background="@drawable/voice_button_inner"
-                    android:src="@drawable/ic_mic"
-                    android:tint="@android:color/white"
-                    android:scaleType="centerInside"
-                    android:contentDescription="@string/voice_input_label"
-                    android:elevation="2dp" />
-
-            </RelativeLayout>
 
             <!-- 拍照按钮（中） -->
             <RelativeLayout

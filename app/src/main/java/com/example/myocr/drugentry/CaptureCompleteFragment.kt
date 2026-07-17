@@ -27,9 +27,6 @@ class CaptureCompleteFragment : Fragment() {
     private var _binding: com.example.myocr.databinding.FragmentCaptureCompleteBinding? = null
     private val binding get() = _binding!!
 
-    /** 字段 key → 用户可选择的候选值列表 */
-    private var selectableCandidates: Map<String, List<String>> = emptyMap()
-
     /** 当前正在语音输入的字段 key */
     private var voiceFieldKey: String = ""
 
@@ -56,9 +53,6 @@ class CaptureCompleteFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         val activity = requireActivity() as DrugEntryActivity
         val session = activity.session
-
-        // 从 session 读取 LLM 多候选
-        selectableCandidates = buildSelectableCandidates(session)
 
         // 返回
         binding.backButton.setOnClickListener { activity.supportFragmentManager.popBackStack() }
@@ -98,23 +92,6 @@ class CaptureCompleteFragment : Fragment() {
         // 调试：查看原始 OCR 文本
         binding.debugRawOcr.setOnClickListener { showOcrDebugDialog(activity) }
         binding.debugRawOcr.visibility = if (session.rawOcrText.isNotBlank()) View.VISIBLE else View.GONE
-    }
-
-    /**
-     * 从 session 的 LLM 多候选数据中提取可选值列表
-     */
-    private fun buildSelectableCandidates(session: DrugEntrySession): Map<String, List<String>> {
-        val result = mutableMapOf<String, List<String>>()
-        for ((fieldKey, fieldCandidates) in session.llmCandidates) {
-            val values = fieldCandidates.candidates
-                .filter { it.value.isNotBlank() }
-                .map { it.value }
-                .distinct()
-            if (values.size > 1) {
-                result[fieldKey] = values
-            }
-        }
-        return result
     }
 
     /** 启动系统语音识别 */
@@ -228,18 +205,8 @@ class CaptureCompleteFragment : Fragment() {
             (valueView as? android.widget.TextView)?.text = fieldValue
             valueView.visibility = View.VISIBLE
             cardView.setBackgroundResource(R.color.field_recognized_bg)
-
-            // 如果 LLM 有多个候选，让值可点击切换
-            val candidates = selectableCandidates[fieldKey]
-            if (!candidates.isNullOrEmpty()) {
-                valueView.isClickable = true
-                valueView.setOnClickListener {
-                    showCandidatePicker(activity, fieldKey, fieldValue, candidates)
-                }
-            } else {
-                valueView.isClickable = false
-                valueView.setOnClickListener(null)
-            }
+            valueView.isClickable = false
+            valueView.setOnClickListener(null)
         } else {
             valueView.visibility = View.GONE
             cardView.setBackgroundResource(R.color.field_pending_bg)
@@ -248,53 +215,6 @@ class CaptureCompleteFragment : Fragment() {
         }
         // 拍照按钮和语音按钮始终可见
         captureButton.visibility = View.VISIBLE
-    }
-
-    /**
-     * 展示 LLM 多候选选择对话框
-     *
-     * @param activity  宿主 Activity
-     * @param fieldKey  当前字段 key
-     * @param currentValue 当前已选值
-     * @param candidates    LLM 返回的候选值列表
-     */
-    private fun showCandidatePicker(
-        activity: DrugEntryActivity,
-        fieldKey: String,
-        currentValue: String,
-        candidates: List<String>
-    ) {
-        val fieldLabel = getFieldLabel(fieldKey)
-        val items = candidates.toTypedArray()
-        var selectedIndex = candidates.indexOf(currentValue)
-        if (selectedIndex < 0) selectedIndex = 0
-
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setTitle("选择 $fieldLabel")
-            .setSingleChoiceItems(items, selectedIndex) { dialog, which ->
-                selectedIndex = which
-            }
-            .setPositiveButton("确定") { dialog, _ ->
-                val chosen = candidates.getOrNull(selectedIndex) ?: return@setPositiveButton
-                if (chosen != currentValue) {
-                    // 更新 session 中的药品信息
-                    val current = activity.session.drugInfo
-                    val updated = when (fieldKey) {
-                        "drugName" -> current.copy(drugName = chosen)
-                        "expiryDate" -> current.copy(expiryDate = chosen)
-                        "manufacturer" -> current.copy(manufacturer = chosen)
-                        "batchNumber" -> current.copy(batchNumber = chosen)
-                        else -> current
-                    }
-                    // 用 RECOGNIZED 状态（用户从候选列表选的，相当于接受了 OCR 结果）
-                    activity.updateDrugInfo(updated, FieldStatus.RECOGNIZED)
-                    // 刷新当前页面的显示
-                    updateFieldStatus(activity, activity.session)
-                }
-                dialog.dismiss()
-            }
-            .setNegativeButton("取消", null)
-            .show()
     }
 
     /**
@@ -326,28 +246,7 @@ class CaptureCompleteFragment : Fragment() {
             sb.append("(无 OCR 原文)")
         }
 
-        // LLM 原始响应（调试用）
-        val apiResponse = session.rawApiResponse
-        if (apiResponse.isNotBlank()) {
-            sb.append("\n\n━━━ LLM 原始响应 ━━━\n")
-            // 提取内层 content（LLM 返回的纯 JSON）
-            val innerContent = try {
-                org.json.JSONObject(apiResponse)
-                    .getJSONArray("choices")
-                    .getJSONObject(0)
-                    .getJSONObject("message")
-                    .getString("content")
-            } catch (e: Exception) { null }
-
-            if (innerContent != null) {
-                sb.append(innerContent)
-            } else {
-                sb.append("(解析失败)\n")
-                sb.append(apiResponse.take(500))
-            }
-        } else {
-            sb.append("\n\n(无 LLM 响应——API 未被调用或失败)")
-        }
+        sb.append("\n\n(LLM 解析已禁用，无 LLM 响应)")
 
         val message = sb.toString()
 

@@ -1,6 +1,5 @@
 package com.example.myocr.drugentry
 
-import android.content.Context
 import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -8,7 +7,6 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import com.example.myocr.R
 import com.example.myocr.databinding.ActivityDrugEntryBinding
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
  * 药品录入流程宿主 Activity
@@ -29,124 +27,8 @@ class DrugEntryActivity : AppCompatActivity() {
         session = transform(session)
     }
 
-    /** 正则 OCR 解析器（兜底） */
-    val drugOcrParser: DrugOcrParser = DrugOcrParser()
-
-    /** DeepSeek API 客户端（由 API key 按需创建） */
-    private var deepSeekClient: DeepSeekClient? = null
-
-    /** LLM 提示词模板管理器 */
-    val promptManager: PromptManager by lazy { PromptManager(this) }
-
     companion object {
         private const val PREFS_NAME = "drug_entry_prefs"
-        private const val KEY_DEEPSEEK_API_KEY = "deepseek_api_key"
-    }
-
-    // ==================== DeepSeek API Key & LLM 配置 ====================
-
-    /**
-     * 从配置文件读取 LLM 配置属性
-     */
-    private val llmConfig: java.util.Properties by lazy {
-        java.util.Properties().apply {
-            try {
-                assets.open("llm_config.properties").use { input ->
-                    load(input)
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("DrugEntryActivity", "llm_config.properties not found in assets", e)
-            }
-        }
-    }
-
-    /**
-     * 获取 DeepSeek API key
-     *
-     * 优先返回 SharedPreferences 中的值（用户通过 UI 设置），
-     * 为空时回退到 assets/llm_config.properties
-     */
-    fun getDeepSeekApiKey(): String {
-        val prefsKey = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_DEEPSEEK_API_KEY, "") ?: ""
-        if (prefsKey.isNotBlank()) return prefsKey
-        return llmConfig.getProperty("deepseek_api_key", "")
-    }
-
-    /**
-     * 获取 LLM 模型名称
-     */
-    fun getLlmModel(): String {
-        return llmConfig.getProperty("deepseek_model", "deepseek-v4-flash")
-    }
-
-    /**
-     * 获取 LLM API URL
-     */
-    fun getLlmApiUrl(): String {
-        return llmConfig.getProperty("deepseek_api_url", "https://api.deepseek.com/chat/completions")
-    }
-
-    /**
-     * 获取 LLM 请求超时（毫秒）
-     */
-    fun getLlmTimeoutMs(): Int {
-        return llmConfig.getProperty("deepseek_timeout_ms", "30000").toIntOrNull() ?: 30000
-    }
-
-    /**
-     * 保存 DeepSeek API key
-     */
-    fun saveDeepSeekApiKey(key: String) {
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_DEEPSEEK_API_KEY, key)
-            .apply()
-        // 重置客户端，下次按需创建
-        deepSeekClient = null
-    }
-
-    /**
-     * 获取 DeepSeek 客户端（有 key 时才创建）
-     */
-    fun getDeepSeekClient(): DeepSeekClient? {
-        val key = getDeepSeekApiKey()
-        if (key.isBlank()) return null
-        if (deepSeekClient == null) {
-            deepSeekClient = DeepSeekClient(
-                apiKey = key,
-                promptManager = promptManager,
-                config = DeepSeekClient.LlmConfig(
-                    apiUrl = getLlmApiUrl(),
-                    model = getLlmModel(),
-                    timeoutMs = getLlmTimeoutMs()
-                )
-            )
-        }
-        return deepSeekClient
-    }
-
-    /**
-     * 弹出 API Key 设置对话框
-     */
-    fun showApiKeyDialog() {
-        val input = com.google.android.material.textfield.TextInputEditText(this).apply {
-            setText(getDeepSeekApiKey())
-            hint = "sk-..."
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                    android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle("DeepSeek API 设置")
-            .setMessage("输入 API key 后启用 LLM 增强识别，可大幅提升药品字段提取准确性。")
-            .setView(input)
-            .setPositiveButton("保存") { _, _ ->
-                val key = input.text?.toString()?.trim() ?: ""
-                saveDeepSeekApiKey(key)
-            }
-            .setNegativeButton("取消", null)
-            .show()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -301,13 +183,6 @@ class DrugEntryActivity : AppCompatActivity() {
             if (newInfo.batchNumber.isNotBlank()) newStatuses["batchNumber"] = source
             session = session.copy(drugInfo = merged, fieldStatuses = newStatuses)
         }
-    }
-
-    /**
-     * 设置 LLM 多候选结果（传递给 CaptureCompleteFragment 展示供用户选择）
-     */
-    fun setLlmCandidates(candidates: Map<String, DeepSeekClient.FieldCandidates>) {
-        session = session.copy(llmCandidates = candidates)
     }
 
     /**

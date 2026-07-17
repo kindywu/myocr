@@ -51,10 +51,6 @@ class EntryFragment : Fragment() {
             startActivity(intent)
         }
 
-        // 设置 → API key 配置
-        binding.settingsButton.setOnClickListener {
-            activity.showApiKeyDialog()
-        }
     }
 
     override fun onDestroyView() {

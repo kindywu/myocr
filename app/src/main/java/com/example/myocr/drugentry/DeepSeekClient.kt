@@ -43,12 +43,187 @@ class DeepSeekClient(
         val timeoutMs: Int = 30_000
     )
 
+    /**
+     * LLM 输出字段定义
+     */
+    data class FieldDef(
+        /** 字段 key（对应 JSON 中的键名） */
+        val key: String,
+        /** 中文标签 */
+        val labelCn: String,
+        /** 英文标签 */
+        val labelEn: String,
+        /** 中文说明 */
+        val descCn: String,
+        /** 英文说明 */
+        val descEn: String
+    )
+
     companion object {
         private const val TAG = "DeepSeekClient"
 
         /** 字段 key 列表，用于遍历 */
         @VisibleForTesting
         internal val FIELD_KEYS = listOf("drugName", "expiryDate", "manufacturer", "batchNumber")
+
+        /**
+         * LLM 输出字段定义（含中英文描述）
+         *
+         * 对应 full_extraction.md 中定义的 JSON 输出结构。
+         * batchNumber 由 approvalNumber + lotNumber 合并而来。
+         */
+        val FIELD_DEFINITIONS: Map<String, FieldDef> = mapOf(
+            "drugName" to FieldDef(
+                key = "drugName",
+                labelCn = "药品名称",
+                labelEn = "Drug Name",
+                descCn = "药品的真正通用名称，如「阿莫西林胶囊」「布洛芬缓释片」",
+                descEn = "Actual generic drug name, e.g. Amoxicillin Capsules"
+            ),
+            "expiryDate" to FieldDef(
+                key = "expiryDate",
+                labelCn = "有效期至",
+                labelEn = "Expiry Date",
+                descCn = "有效期至的日期，格式 yyyy-MM 或 yyyy-MM-dd，可由生产日期+保质期推算",
+                descEn = "Expiration date in yyyy-MM or yyyy-MM-dd format; may be calculated from production date + shelf life"
+            ),
+            "manufacturer" to FieldDef(
+                key = "manufacturer",
+                labelCn = "生产厂家",
+                labelEn = "Manufacturer",
+                descCn = "药品实际生产企业名称，通常含「有限公司」「制药」「药业」等关键词",
+                descEn = "Actual pharmaceutical manufacturer, commonly containing Co., Ltd., Pharma, etc."
+            ),
+            "approvalNumber" to FieldDef(
+                key = "approvalNumber",
+                labelCn = "批准文号",
+                labelEn = "Approval Number",
+                descCn = "药品监管审批编码，如「国药准字H20093069」，同一药品所有批次共用，固定不变",
+                descEn = "Drug regulatory approval code, e.g. '国药准字H20093069'; constant across batches"
+            ),
+            "lotNumber" to FieldDef(
+                key = "lotNumber",
+                labelCn = "生产批号",
+                labelEn = "Lot / Batch Number",
+                descCn = "生产企业标注的批次追溯编号，标注为「批号」「Lot」「Batch No.」，每批不同",
+                descEn = "Batch traceability number marked as '批号', 'Lot', or 'Batch No.'; varies per batch"
+            )
+        )
+
+        /** LLM 输出的全部字段 key（含 [FIELD_KEYS] 未覆盖的） */
+        val LLM_FIELD_KEYS: Set<String> get() = FIELD_DEFINITIONS.keys
+
+        // ==================== 动态 Prompt 构建（基于 FIELD_DEFINITIONS） ====================
+
+        /** 通用提取规则（全字段和单字段共用） */
+        private val COMMON_RULES: String = """
+## 通用规则
+- confidence 为 0 到 1 之间的浮点数，数值越高越有把握
+- 每个字段最多返回 3 个候选，按 confidence 从高到低排序
+- 所有字段值必须使用包装原文语言如实提取，禁止翻译或改写
+- reason 字段说明提取依据或置信度理由
+
+## 反幻觉规则（必须严格执行）
+- ⚠️ 所有字段值必须直接来源于 OCR 识别文本，不得自行编造
+- ⚠️ 如果 OCR 文本中找不到某个字段信息，该字段必须返回空 candidates
+- ⚠️ 禁止从其他字段的值中推算出新字段的信息
+- ⚠️ 当 OCR 文本明显与药品包装无关时，所有字段均应返回空 candidates
+""".trimIndent()
+
+        /**
+         * 从 [FIELD_DEFINITIONS] 动态构建全字段 system prompt
+         *
+         * 全字段返回 Map（5个字段各自的候选列表）
+         */
+        fun buildFullSystemPrompt(): String = buildString {
+            appendLine("你是一个药品信息提取助手。根据 OCR 识别文本提取结构化药品信息。")
+            appendLine()
+            appendLine("## 字段定义")
+            appendLine()
+            for (def in FIELD_DEFINITIONS.values) {
+                appendLine("### ${def.labelCn}（${def.key}）")
+                appendLine(def.descCn)
+                appendLine()
+            }
+            appendLine(COMMON_RULES)
+            appendLine()
+            appendLine("## 输出格式")
+            appendLine("严格按照以下 JSON 结构返回（每个字段为一个 key-value）：")
+            appendLine("{")
+            val keys = FIELD_DEFINITIONS.keys.toList()
+            for ((i, key) in keys.withIndex()) {
+                append("  \"$key\": {\"candidates\": [{\"value\": \"...\", \"confidence\": 0.0, \"reason\": \"...\"}]}")
+                if (i < keys.size - 1) appendLine(",") else appendLine()
+            }
+            appendLine("}")
+            appendLine("无法确定的字段返回空 candidates：{\"candidates\": []}")
+            appendLine("返回纯 JSON，不要包含其他文字。")
+        }
+
+        /**
+         * 从 [FIELD_DEFINITIONS] 动态构建单字段 system prompt
+         *
+         * @param fieldKey 字段 key（如 "drugName"），必须存在于 [FIELD_DEFINITIONS] 中
+         * @return 聚焦于该字段的 system prompt
+         */
+        fun buildSingleFieldSystemPrompt(fieldKey: String): String {
+            val def = FIELD_DEFINITIONS[fieldKey]
+                ?: throw IllegalArgumentException("未知字段 key: $fieldKey，可用: ${FIELD_DEFINITIONS.keys}")
+
+            return buildString {
+                appendLine("你是一个药品信息提取助手。根据 OCR 识别文本提取指定字段。")
+                appendLine()
+                appendLine("## 待提取字段")
+                appendLine()
+                appendLine("### ${def.labelCn}（${def.key}）")
+                appendLine(def.descCn)
+                appendLine()
+                appendLine(COMMON_RULES)
+                appendLine()
+                appendLine("## 输出格式")
+                appendLine("严格按照以下 JSON 结构返回（只包含该字段）：")
+                appendLine("{")
+                appendLine("  \"${def.key}\": {\"candidates\": [{\"value\": \"...\", \"confidence\": 0.0, \"reason\": \"...\"}]}")
+                appendLine("}")
+                appendLine("无法确定则返回空 candidates：{\"candidates\": []}")
+                appendLine("返回纯 JSON，不要包含其他文字。")
+            }
+        }
+
+        /**
+         * 格式化用户消息（带行号 + 位置 + 可选语音输入）
+         */
+        fun formatPositionalUserMessage(ocrLines: List<OcrLine>, voiceInput: String): String {
+            val imageHeight = ocrLines.maxOfOrNull { it.boundingBox?.bottom ?: 0 } ?: 0
+            val lines = ocrLines.mapIndexed { i, line ->
+                "行 ${i + 1} | 位置: ${line.estimateVerticalPosition(imageHeight)} | ${line.text}"
+            }
+            return formatUserMessage(lines.joinToString("\n"), voiceInput)
+        }
+
+        /**
+         * 格式化用户消息（仅行号，无位置信息）
+         */
+        fun formatSimpleUserMessage(rawText: String, voiceInput: String): String {
+            val lines = rawText.lines().map { it.trim() }.filter { it.isNotBlank() }
+                .mapIndexed { i, line -> "行 ${i + 1} | $line" }
+            return formatUserMessage(lines.joinToString("\n"), voiceInput)
+        }
+
+        /**
+         * 格式化用户的输入为 user message 模板
+         */
+        private fun formatUserMessage(ocrText: String, voiceInput: String): String = buildString {
+            appendLine("OCR识别文本：")
+            appendLine(ocrText)
+            appendLine()
+            if (voiceInput.isNotBlank()) {
+                appendLine("用户语音输入文本：")
+                appendLine(voiceInput)
+                appendLine()
+            }
+            append("从以上信息，提取药品信息。")
+        }
 
         // ==================== 响应解析（纯函数，可单独测试） ====================
 
@@ -82,20 +257,9 @@ class DeepSeekClient(
             val resultJson = JSONObject(content)
             val fieldMap = mutableMapOf<String, FieldCandidates>()
 
-            // 1️⃣ 解析标准字段
-            for (fieldKey in FIELD_KEYS) {
+            // 解析全部字段（基于 FIELD_DEFINITIONS，目前 5 个）
+            for (fieldKey in FIELD_DEFINITIONS.keys) {
                 fieldMap[fieldKey] = extractFieldCandidates(resultJson, fieldKey)
-            }
-
-            // 2️⃣ 兼容处理：markdown prompt 将 batchNumber 拆分为 approvalNumber + lotNumber
-            val existingBatch = fieldMap["batchNumber"]?.candidates ?: emptyList()
-            if (existingBatch.isEmpty() && (resultJson.has("approvalNumber") || resultJson.has("lotNumber"))) {
-                val extra = mutableListOf<Candidate>()
-                extra.addAll(extractFieldCandidates(resultJson, "approvalNumber").candidates)
-                extra.addAll(extractFieldCandidates(resultJson, "lotNumber").candidates)
-                if (extra.isNotEmpty()) {
-                    fieldMap["batchNumber"] = FieldCandidates(extra.sortedByDescending { it.confidence })
-                }
             }
 
             return fieldMap
@@ -221,16 +385,35 @@ class DeepSeekClient(
     // ==================== 主入口 ====================
 
     /**
-     * 调用 DeepSeek API 提取药品信息（带 OCR 行位置信息 + 可选的语音输入）
+     * 提取 LLM 返回的 5 字段到 [DrugInfo]（4 字段：approvalNumber + lotNumber 合并为 batchNumber）
+     */
+    private fun toDrugInfo(rawCandidates: Map<String, FieldCandidates>): DrugInfo {
+        val batchCandidates = mutableListOf<Candidate>()
+        batchCandidates.addAll(rawCandidates["approvalNumber"]?.candidates ?: emptyList())
+        batchCandidates.addAll(rawCandidates["lotNumber"]?.candidates ?: emptyList())
+
+        return DrugInfo(
+            drugName = rawCandidates["drugName"]?.bestValue ?: "",
+            expiryDate = rawCandidates["expiryDate"]?.bestValue ?: "",
+            manufacturer = rawCandidates["manufacturer"]?.bestValue ?: "",
+            batchNumber = if (batchCandidates.isEmpty()) ""
+                else batchCandidates.maxByOrNull { it.confidence }?.value ?: ""
+        )
+    }
+
+    /**
+     * 全字段提取：从 OCR 文本中提取全部 5 个字段
+     *
+     * 基于 [FIELD_DEFINITIONS] 动态构建 system prompt，调用一次 API。
      *
      * @param rawText  ML Kit OCR 原始识别文本
-     * @param ocrLines OCR 逐行识别结果（含位置信息）
+     * @param ocrLines OCR 逐行识别结果（含位置信息），为空则走无位置路径
      * @param voiceInputDrugName 用户语音输入的药品名称（辅助 LLM 判断）
-     * @return 解析结果
+     * @return [Result]，其中 [allCandidates] 包含全部 5 个字段
      */
     fun extractDrugInfo(
         rawText: String,
-        ocrLines: List<OcrLine>,
+        ocrLines: List<OcrLine> = emptyList(),
         voiceInputDrugName: String = ""
     ): Result {
         if (rawText.isBlank()) {
@@ -238,28 +421,27 @@ class DeepSeekClient(
         }
 
         return try {
-            // 1️⃣ 预过滤
-            val filteredLines = filterLinesByText(ocrLines)
-            val filteredText = filteredLines.joinToString("\n") { it.text }
+            // 1️⃣ 格式化用户消息
+            val formattedText = if (ocrLines.isNotEmpty()) {
+                formatPositionalUserMessage(ocrLines, voiceInputDrugName)
+            } else {
+                val filtered = DrugOcrParser.preFilter(rawText)
+                formatSimpleUserMessage(filtered, voiceInputDrugName)
+            }
 
-            // 2️⃣ 格式化（带行号 + 位置描述 + 可选的语音输入）
-            val formattedText = promptManager.buildPositionalUserMessage(filteredLines, voiceInputDrugName)
+            // 2️⃣ 动态构建全字段 system prompt（基于 FIELD_DEFINITIONS）
+            val systemPrompt = buildFullSystemPrompt()
 
-            // 3️⃣ 调用 API（带位置 prompt）
-            val responseJson = callApi(formattedText, promptManager.fullExtraction.systemTemplate)
+            // 3️⃣ 调用 API
+            val responseJson = callApi(formattedText, systemPrompt)
 
-            // 4️⃣ 解析多候选响应
+            // 4️⃣ 解析全部 5 个字段
             val rawCandidates = parseResponse(responseJson)
 
-            // 5️⃣ 直接取最佳值
-            val bestInfo = DrugInfo(
-                drugName = rawCandidates["drugName"]?.bestValue ?: "",
-                expiryDate = rawCandidates["expiryDate"]?.bestValue ?: "",
-                manufacturer = rawCandidates["manufacturer"]?.bestValue ?: "",
-                batchNumber = rawCandidates["batchNumber"]?.bestValue ?: ""
-            )
+            // 5️⃣ 映射到 DrugInfo（approvalNumber + lotNumber → batchNumber）
+            val bestInfo = toDrugInfo(rawCandidates)
 
-            Log.d(TAG, "LLM result (positional): drugName=[${bestInfo.drugName}] " +
+            Log.d(TAG, "LLM full result: drugName=[${bestInfo.drugName}] " +
                     "expiry=[${bestInfo.expiryDate}] mfg=[${bestInfo.manufacturer}] batch=[${bestInfo.batchNumber}]")
 
             Result(
@@ -276,54 +458,50 @@ class DeepSeekClient(
     }
 
     /**
-     * 调用 DeepSeek API 提取药品信息（无位置信息，简化版）
+     * 单字段提取：从 OCR 文本中提取指定字段
      *
-     * @param rawText ML Kit OCR 原始识别文本
+     * 基于 [FIELD_DEFINITIONS] 中对应字段的 desc 动态构建聚焦 prompt，调用一次 API。
+     *
+     * @param fieldKey 字段 key（如 "drugName"），必须存在于 [FIELD_DEFINITIONS]
+     * @param rawText  ML Kit OCR 原始识别文本
+     * @param ocrLines OCR 逐行识别结果（含位置信息），为空则走无位置路径
      * @param voiceInputDrugName 用户语音输入的药品名称（辅助 LLM 判断）
-     * @return 解析结果
+     * @return 该字段的候选列表，可直接取 [bestValue] 获取文本
      */
-    fun extractDrugInfo(
+    fun extractSingleField(
+        fieldKey: String,
         rawText: String,
+        ocrLines: List<OcrLine> = emptyList(),
         voiceInputDrugName: String = ""
-    ): Result {
-        if (rawText.isBlank()) {
-            return Result(false, error = "OCR 文本为空")
+    ): FieldCandidates {
+        if (!FIELD_DEFINITIONS.containsKey(fieldKey)) {
+            throw IllegalArgumentException("未知字段 key: $fieldKey，可用: ${FIELD_DEFINITIONS.keys}")
         }
 
+        if (rawText.isBlank()) return FieldCandidates()
+
         return try {
-            // 1️⃣ 预过滤
-            val filteredText = DrugOcrParser.preFilter(rawText)
+            // 1️⃣ 格式化用户消息
+            val formattedText = if (ocrLines.isNotEmpty()) {
+                formatPositionalUserMessage(ocrLines, voiceInputDrugName)
+            } else {
+                val filtered = DrugOcrParser.preFilter(rawText)
+                formatSimpleUserMessage(filtered, voiceInputDrugName)
+            }
 
-            // 2️⃣ 格式化（带行号 + 可选的语音输入）
-            val formattedText = promptManager.buildSimpleUserMessage(filteredText, voiceInputDrugName)
+            // 2️⃣ 动态构建单字段 system prompt
+            val systemPrompt = buildSingleFieldSystemPrompt(fieldKey)
 
-            // 3️⃣ 调用 API（无位置 prompt）
-            val responseJson = callApi(formattedText, promptManager.fullExtraction.systemTemplate)
+            // 3️⃣ 调用 API
+            val responseJson = callApi(formattedText, systemPrompt)
 
-            // 4️⃣ 解析多候选响应
+            // 4️⃣ 解析（parseResponse 返回全部字段，但只取目标字段）
             val rawCandidates = parseResponse(responseJson)
 
-            // 5️⃣ 直接取最佳值
-            val bestInfo = DrugInfo(
-                drugName = rawCandidates["drugName"]?.bestValue ?: "",
-                expiryDate = rawCandidates["expiryDate"]?.bestValue ?: "",
-                manufacturer = rawCandidates["manufacturer"]?.bestValue ?: "",
-                batchNumber = rawCandidates["batchNumber"]?.bestValue ?: ""
-            )
-
-            Log.d(TAG, "LLM result: drugName=[${bestInfo.drugName}] " +
-                    "expiry=[${bestInfo.expiryDate}] mfg=[${bestInfo.manufacturer}] batch=[${bestInfo.batchNumber}]")
-
-            Result(
-                success = true,
-                allCandidates = rawCandidates,
-                drugInfo = bestInfo,
-                formattedInput = formattedText,
-                rawApiResponse = responseJson
-            )
+            rawCandidates[fieldKey] ?: FieldCandidates()
         } catch (e: Exception) {
-            Log.e(TAG, "DeepSeek API call failed", e)
-            Result(false, error = e.message ?: "未知错误")
+            Log.e(TAG, "DeepSeek single field [$fieldKey] failed", e)
+            FieldCandidates()
         }
     }
 

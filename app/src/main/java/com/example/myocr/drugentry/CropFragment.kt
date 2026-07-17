@@ -162,43 +162,8 @@ class CropFragment : Fragment() {
         // 保存原始 OCR 文本到 session（用于调试展示）
         activity.updateSession { it.copy(rawOcrText = rawText) }
 
-        if (rawText.isNotBlank()) {
-            // 1️⃣ 获取用户语音输入的药品名称（辅助 LLM）
-            val voiceInput = activity.session.voiceInputDrugName
-
-            // 2️⃣ LLM 解析（可选，有 API key 才走）
-            //    不再使用正则解析，完全信任 LLM 的判断
-            var finalParsed = DrugInfo()
-            var finalCandidates = emptyMap<String, DeepSeekClient.FieldCandidates>()
-            val llmClient = activity.getDeepSeekClient()
-            if (llmClient != null) {
-                try {
-                    val llmResult = llmClient.extractDrugInfo(rawText, ocrLines, voiceInput)
-                    if (llmResult.success) {
-                        finalCandidates = llmResult.allCandidates
-                        finalParsed = llmResult.drugInfo
-                        // 保存 LLM 输入/响应到 session（调试用）
-                        activity.updateSession {
-                            it.copy(
-                                llmFormattedInput = llmResult.formattedInput,
-                                rawApiResponse = llmResult.rawApiResponse
-                            )
-                        }
-                        Log.d(TAG, "LLM result: drugName=[${finalParsed.drugName}]")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "LLM failed, fields left empty for manual fill", e)
-                }
-            }
-
-            // 3️⃣ 更新 session（仅 LLM 有结果时才写入，否则留给用户手动填写）
-            if (finalParsed.drugName.isNotBlank() || finalParsed.hasAnyValue) {
-                activity.updateDrugInfo(finalParsed, FieldStatus.RECOGNIZED)
-            }
-            if (finalCandidates.isNotEmpty()) {
-                activity.setLlmCandidates(finalCandidates)
-            }
-        }
+        // LLM 解析已暂时禁用，字段留空供用户手动填写
+        Log.d(TAG, "LLM extraction disabled — fields left for manual entry")
 
         navigateAfterOcr(activity)
     }
