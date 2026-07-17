@@ -1,5 +1,6 @@
 package com.example.myocr.drugentry
 
+import android.content.Context
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.example.myocr.OcrLine
@@ -112,6 +113,61 @@ class DeepSeekClient(
 
         /** LLM 输出的全部字段 key（含 [FIELD_KEYS] 未覆盖的） */
         val LLM_FIELD_KEYS: Set<String> get() = FIELD_DEFINITIONS.keys
+
+        // ==================== 工厂方法 ====================
+
+        /**
+         * 创建 DeepSeekClient 实例，自动解析 API Key
+         *
+         * Key 优先级（高 → 低）：
+         * 1. BuildConfig.DEEPSEEK_API_KEY（构建时从 local.properties 注入）
+         * 2. assets/llm_config.properties 中的 deepseek_api_key
+         *
+         * 所有来源均为 `<test>` 占位符或空值时返回 null。
+         *
+         * @param context Android Context
+         * @return DeepSeekClient 实例，或 null（未配置有效 Key）
+         */
+        fun create(context: Context): DeepSeekClient? {
+            val apiKey = resolveApiKey(context) ?: return null
+            return DeepSeekClient(
+                apiKey = apiKey,
+                promptManager = PromptManager(context)
+            )
+        }
+
+        /**
+         * 解析 API Key
+         */
+        private fun resolveApiKey(context: Context): String? {
+            // 1. BuildConfig（构建时从 local.properties 注入）
+            try {
+                val buildKey = com.example.myocr.BuildConfig.DEEPSEEK_API_KEY
+                if (buildKey.isNotBlank() && buildKey != "<test>") {
+                    Log.d(TAG, "API Key resolved from BuildConfig")
+                    return buildKey
+                }
+            } catch (_: Exception) {
+                // BuildConfig 未生成，继续尝试 assets
+            }
+
+            // 2. assets/llm_config.properties
+            try {
+                val props = java.util.Properties()
+                context.assets.open("llm_config.properties").use { props.load(it) }
+                val key = props.getProperty("deepseek_api_key", "").trim()
+                if (key.isNotBlank() && key != "<test>") {
+                    Log.d(TAG, "API Key resolved from assets/llm_config.properties")
+                    return key
+                }
+            } catch (_: Exception) {
+                Log.w(TAG, "Failed to read llm_config.properties from assets")
+            }
+
+            Log.w(TAG, "No valid DeepSeek API Key configured. " +
+                    "Add 'deepseekApiKey=sk-xxx' to local.properties or set in app settings.")
+            return null
+        }
 
         // ==================== 动态 Prompt 构建（基于 FIELD_DEFINITIONS） ====================
 

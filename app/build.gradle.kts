@@ -2,6 +2,23 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+// 从 secrets.properties 或 local.properties 读取 DeepSeek API Key
+// 优先级：secrets.properties > local.properties > gradle property
+val deepseekApiKey: String = run {
+    val props = java.util.Properties()
+    // 1. 尝试 secrets.properties
+    rootProject.file("secrets.properties").takeIf { it.exists() }?.let {
+        props.load(it.inputStream())
+    }
+    // 2. 尝试 local.properties（覆盖）
+    rootProject.file("local.properties").takeIf { it.exists() }?.let {
+        props.load(it.inputStream())
+    }
+    props.getProperty("deepseekApiKey")?.trim()
+        ?: project.findProperty("deepseekApiKey")?.toString()
+        ?: "<test>"
+}
+
 android {
     namespace = "com.example.myocr"
     compileSdk {
@@ -16,6 +33,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // DeepSeek API Key — 从 local.properties 注入，构建时写入 BuildConfig
+        buildConfigField("String", "DEEPSEEK_API_KEY", "\"${deepseekApiKey}\"")
 
         // 仅保留 arm64-v8a 减小体积（国产手机主流架构）
         ndk {
@@ -46,6 +66,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
     packaging {
         resources {
