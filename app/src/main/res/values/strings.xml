@@ -41,7 +41,7 @@
     <string name="completion_title">视频采集</string>
     <string name="completion_progress">已识别 %1$d/%2$d 个字段</string>
     <string name="field_drug_name">药品名称</string>
-    <string name="field_expiry_date">有效期</string>
+    <string name="field_expiry_date">有效期至</string>
     <string name="field_manufacturer">生产厂家</string>
     <string name="field_batch_number">批号</string>
     <string name="recognized">已识别</string>
@@ -88,7 +88,7 @@
     <string name="voice_no_permission">需要录音权限才能使用语音输入</string>
 
     <!-- 调试 -->
-    <string name="view_raw_ocr">查看识别原文 →</string>
+    <string name="view_raw_ocr">查看识别调试信息</string>
     <string name="debug_raw_ocr_title">OCR 原始识别结果</string>
     <string name="debug_regex_title">正则解析结果</string>
     <string name="debug_llm_title">LLM 候选结果</string>

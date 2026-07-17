@@ -59,7 +59,10 @@ data class DrugEntrySession(
     val rawOcrText: String = "",
 
     /** LLM 原始响应 JSON（用于调试展示） */
-    val llmResponseJson: String = ""
+    val llmResponseJson: String = "",
+
+    /** 各字段用户已采纳的语音补充文本（用于 LLM 提取参考） */
+    val fieldVoiceInputs: Map<String, String> = emptyMap(),
 )
 
 enum class DrugEntryStep {

@@ -2,14 +2,11 @@ package com.example.myocr
 
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import com.example.myocr.drugentry.DeepSeekClient
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * 只渲染 prompt，不调 API。—— 查看全部字段和每个字段的 prompt 实际长什么样。
- */
+/** 只渲染 prompt，不调 API。—— 查看全部字段和每个字段的 prompt 实际长什么样。 */
 @RunWith(AndroidJUnit4::class)
 class PromptPreviewTest {
 
@@ -39,13 +36,14 @@ class PromptPreviewTest {
         Log.i(tag, "\n\n")
 
         // ── 逐个字段 ──
-        val fields = listOf(
-            "drugName" to "药品名称",
-            "expiryDate" to "有效期至",
-            "manufacturer" to "生产厂家",
-            "approvalNumber" to "批准文号",
-            "lotNumber" to "生产批号"
-        )
+        val fields =
+                listOf(
+                        "drugName" to "药品名称",
+                        "expiryDate" to "有效期至至",
+                        "manufacturer" to "生产厂家",
+                        "approvalNumber" to "批准文号",
+                        "lotNumber" to "生产批号"
+                )
         for ((key, label) in fields) {
             Log.i(tag, sep)
             Log.i(tag, "【单字段 $label（$key）】System Prompt")

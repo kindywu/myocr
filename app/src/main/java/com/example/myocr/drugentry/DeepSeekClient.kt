@@ -187,7 +187,7 @@ class DeepSeekClient(
          *
          * 全字段返回 Map（5个字段各自的候选列表）
          */
-        fun buildFullSystemPrompt(): String = buildString {
+        fun buildFullSystemPrompt(hasVoiceInput: Boolean = false): String = buildString {
             appendLine("你是一个药品信息提取助手。根据 OCR 识别文本提取结构化药品信息。")
             appendLine()
             appendLine("## 字段定义")
@@ -198,6 +198,17 @@ class DeepSeekClient(
                 appendLine()
             }
             appendLine(COMMON_RULES)
+            if (hasVoiceInput) {
+                appendLine()
+                appendLine("## 语音输入处理规则")
+                appendLine()
+                appendLine("当用户提供了「语音输入文本」时，它是对药品包装实物的补充信息：")
+                appendLine("- 语音输入是用户对着药品包装说话识别的结果，是用户确认的真实信息")
+                appendLine("- 语音输入中的内容必须被采纳为对应字段的值，除非 OCR 文本中存在明显更准确的信息")
+                appendLine("- 当语音输入内容与 OCR 文本中某个字段疑似冲突时，优先采信语音输入")
+                appendLine("- 语音输入可以帮助确定 OCR 文本中的某段文字对应哪个字段")
+                appendLine("- 如果语音输入提供了 OCR 文本中没有的信息，应将其填入最合理的字段")
+            }
             appendLine()
             appendLine("## 字段特殊规则")
             appendLine()
@@ -250,7 +261,7 @@ class DeepSeekClient(
 规则：
 - OCR 识别可能产生错字、漏字、乱码，可根据药品知识修正 OCR 拼写错误
 - 例如 OCR 识别「奥美拉唑溶肢真」「奥美拉唑溶肠胶嚷」等，应结合上下文输出正确的「奥美拉唑肠溶胶囊」
-- 如果存在语音输入，可作为参考但不是唯一依据
+- 如果存在语音输入，这是用户对着包装说话识别的结果，应优先采纳
 - ❌ OCR 文本中没有提到任何药名时，返回空 candidates，不得编造
 - 每条候选带 confidence（0~1）：完全匹配 0.9+，轻度修正 0.7-0.9，较大修正 0.4-0.7
 
@@ -375,7 +386,7 @@ class DeepSeekClient(
             appendLine(ocrText)
             appendLine()
             if (voiceInput.isNotBlank()) {
-                appendLine("用户语音输入文本：")
+                appendLine("用户语音输入文本（用户对着药品包装说话识别，应优先采纳）：")
                 appendLine(voiceInput)
                 appendLine()
             }
@@ -503,11 +514,11 @@ class DeepSeekClient(
             sb.append(numbered.joinToString("\n"))
             sb.append("\n\n")
             if (voiceInput.isNotBlank()) {
-                sb.append("用户语音输入文本：\n")
+                sb.append("用户语音输入文本（用户对着药品包装说话识别，应优先采纳）：\n")
                 sb.append(voiceInput)
                 sb.append("\n\n")
             }
-            sb.append("从以上两段信息，提取药品信息。")
+            sb.append("从以上信息，提取药品信息。")
             return sb.toString()
         }
     }
@@ -566,13 +577,13 @@ class DeepSeekClient(
      *
      * @param rawText  ML Kit OCR 原始识别文本
      * @param ocrLines OCR 逐行识别结果（含位置信息），为空则走无位置路径
-     * @param voiceInputDrugName 用户语音输入的药品名称（辅助 LLM 判断）
+     * @param userVoiceText 用户语音补充文本（与 OCR 文本一起发给 LLM 参考）
      * @return [Result]，其中 [allCandidates] 包含全部 5 个字段
      */
     fun extractDrugInfo(
         rawText: String,
         ocrLines: List<OcrLine> = emptyList(),
-        voiceInputDrugName: String = ""
+        userVoiceText: String = ""
     ): Result {
         if (rawText.isBlank()) {
             return Result(false, error = "OCR 文本为空")
@@ -581,17 +592,18 @@ class DeepSeekClient(
         return try {
             // 1️⃣ 格式化用户消息
             val formattedText = if (ocrLines.isNotEmpty()) {
-                formatPositionalUserMessage(ocrLines, voiceInputDrugName)
+                formatPositionalUserMessage(ocrLines, userVoiceText)
             } else {
                 val filtered = DrugOcrParser.preFilter(rawText)
-                formatSimpleUserMessage(filtered, voiceInputDrugName)
+                formatSimpleUserMessage(filtered, userVoiceText)
             }
 
             // 2️⃣ 动态构建全字段 system prompt（基于 FIELD_DEFINITIONS）
-            val systemPrompt = buildFullSystemPrompt()
+            // 仅在用户提供了语音补充时才包含语音输入处理规则
+            val systemPrompt = buildFullSystemPrompt(hasVoiceInput = userVoiceText.isNotBlank())
 
-            // 3️⃣ 调用 API
-            val responseJson = callApi(formattedText, systemPrompt)
+            // 3️⃣ 调用 API（含重试）
+            val responseJson = callApiWithRetry(formattedText, systemPrompt)
 
             // 4️⃣ 解析全部 5 个字段
             val rawCandidates = parseResponse(responseJson)
@@ -610,8 +622,9 @@ class DeepSeekClient(
                 rawApiResponse = responseJson
             )
         } catch (e: Exception) {
-            Log.e(TAG, "DeepSeek API call failed", e)
-            Result(false, error = e.message ?: "未知错误")
+            val userMsg = toUserMessage(e)
+            Log.e(TAG, "DeepSeek API call failed: $userMsg", e)
+            Result(false, error = userMsg)
         }
     }
 
@@ -623,14 +636,14 @@ class DeepSeekClient(
      * @param fieldKey 字段 key（如 "drugName"），必须存在于 [FIELD_DEFINITIONS]
      * @param rawText  ML Kit OCR 原始识别文本
      * @param ocrLines OCR 逐行识别结果（含位置信息），为空则走无位置路径
-     * @param voiceInputDrugName 用户语音输入的药品名称（辅助 LLM 判断）
+     * @param userVoiceText 用户语音补充文本（与 OCR 文本一起发给 LLM 参考）
      * @return 该字段的候选列表，可直接取 [bestValue] 获取文本
      */
     fun extractSingleField(
         fieldKey: String,
         rawText: String,
         ocrLines: List<OcrLine> = emptyList(),
-        voiceInputDrugName: String = ""
+        userVoiceText: String = ""
     ): FieldCandidates {
         if (!FIELD_DEFINITIONS.containsKey(fieldKey)) {
             throw IllegalArgumentException("未知字段 key: $fieldKey，可用: ${FIELD_DEFINITIONS.keys}")
@@ -642,30 +655,71 @@ class DeepSeekClient(
             // 1️⃣ 格式化用户消息（指定字段名，LLM 就不会返回无关字段）
             val fieldLabel = FIELD_DEFINITIONS[fieldKey]?.labelCn ?: ""
             val formattedText = if (ocrLines.isNotEmpty()) {
-                formatPositionalUserMessage(ocrLines, voiceInputDrugName, fieldLabel)
+                formatPositionalUserMessage(ocrLines, userVoiceText, fieldLabel)
             } else {
                 val filtered = DrugOcrParser.preFilter(rawText)
-                formatSimpleUserMessage(filtered, voiceInputDrugName, fieldLabel)
+                formatSimpleUserMessage(filtered, userVoiceText, fieldLabel)
             }
 
             // 2️⃣ 动态构建单字段 system prompt
             val systemPrompt = buildSingleFieldSystemPrompt(fieldKey)
 
-            // 3️⃣ 调用 API
-            val responseJson = callApi(formattedText, systemPrompt)
+            // 3️⃣ 调用 API（含重试）
+            val responseJson = callApiWithRetry(formattedText, systemPrompt)
 
             // 4️⃣ 解析（parseResponse 返回全部字段，但只取目标字段）
             val rawCandidates = parseResponse(responseJson)
 
             rawCandidates[fieldKey] ?: FieldCandidates()
         } catch (e: Exception) {
-            Log.e(TAG, "DeepSeek single field [$fieldKey] failed", e)
+            Log.e(TAG, "DeepSeek single field [$fieldKey] failed: ${toUserMessage(e)}", e)
             FieldCandidates()
         }
     }
 
     // ==================== 内部方法 ====================
 
+    /** API 重试次数 */
+    private val maxRetries = 3
+
+    /**
+     * API 错误分类 —— 决定是否值得重试
+     */
+    private enum class ErrorClass {
+        /** 网络/IO/5xx/429 — 可重试 */
+        RETRYABLE,
+        /** 400/401/403/404 — 重试也没用 */
+        NON_RETRYABLE
+    }
+
+    /**
+     * 带分类的 API 异常
+     */
+    private class ApiException(
+        val errorClass: ErrorClass,
+        message: String,
+        val statusCode: Int = 0,
+        cause: Throwable? = null
+    ) : RuntimeException(message, cause)
+
+    /**
+     * 根据 HTTP 状态码返回用户可读的错误消息
+     */
+    private fun userFacingError(statusCode: Int, responseBody: String): String = when (statusCode) {
+        400 -> "请求格式错误，请联系开发者"
+        401, 403 -> "API Key 无效或已过期，请检查 API Key 配置"
+        404 -> "LLM 服务地址错误，请联系开发者"
+        429 -> "请求过于频繁，请稍后重试"
+        in 500..599 -> "LLM 服务暂时不可用，请稍后重试"
+        else -> "API 请求失败 (HTTP $statusCode)"
+    }
+
+    /**
+     * 单次 API 调用（不重试）
+     *
+     * @throws ApiException 区分可重试/不可重试
+     * @throws IOException 网络异常（可重试）
+     */
     private fun callApi(formattedText: String, systemPrompt: String): String {
         val payload = JSONObject().apply {
             put("model", config.model)
@@ -713,9 +767,74 @@ class DeepSeekClient(
         conn.disconnect()
 
         if (responseCode !in 200..299) {
-            throw RuntimeException("API error $responseCode: ${response.take(200)}")
+            val errorClass = when (responseCode) {
+                400, 401, 403, 404 -> ErrorClass.NON_RETRYABLE
+                else -> ErrorClass.RETRYABLE  // 429, 5xx
+            }
+            throw ApiException(
+                errorClass = errorClass,
+                message = "API error $responseCode: ${response.take(200)}",
+                statusCode = responseCode
+            )
         }
 
         return response
+    }
+
+    /**
+     * 带重试的 API 调用
+     *
+     * - 不可重试错误（400/401/403/404）→ 立即抛出，不重试
+     * - 可重试错误（429/5xx/网络异常）→ 重试 [maxRetries] 次
+     * - 重试耗尽 → 抛出最后一次异常
+     *
+     * @return API 响应 JSON 字符串
+     * @throws ApiException 不可重试错误或重试耗尽
+     */
+    private fun callApiWithRetry(formattedText: String, systemPrompt: String): String {
+        var lastError: Exception? = null
+
+        for (attempt in 1..maxRetries) {
+            try {
+                return callApi(formattedText, systemPrompt)
+            } catch (e: ApiException) {
+                if (e.errorClass == ErrorClass.NON_RETRYABLE) {
+                    throw e  // 不可重试，立即失败
+                }
+                Log.w(TAG, "API call attempt $attempt/$maxRetries failed (retryable), retrying...", e)
+                lastError = e
+                if (attempt < maxRetries) {
+                    val delay = 1000L * attempt  // 递增退避：1s, 2s
+                    Thread.sleep(delay)
+                }
+            } catch (e: java.io.IOException) {
+                Log.w(TAG, "API call attempt $attempt/$maxRetries failed (network), retrying...", e)
+                lastError = e
+                if (attempt < maxRetries) {
+                    Thread.sleep(1000L * attempt)
+                }
+            }
+        }
+
+        throw lastError ?: RuntimeException("API call failed after $maxRetries retries")
+    }
+
+    /**
+     * 将异常转换为用户可读的错误消息
+     */
+    private fun toUserMessage(e: Exception): String {
+        return when (e) {
+            is ApiException -> {
+                if (e.statusCode in 400..599) {
+                    userFacingError(e.statusCode, e.message ?: "")
+                } else {
+                    "LLM 提取失败：${e.message?.take(80) ?: "未知错误"}"
+                }
+            }
+            is java.net.SocketTimeoutException -> "网络连接超时，已重试 $maxRetries 次，请检查网络"
+            is java.net.UnknownHostException -> "无法解析服务器地址，请检查网络连接"
+            is java.io.IOException -> "网络连接失败，已重试 $maxRetries 次：${e.message?.take(60) ?: "未知错误"}"
+            else -> "LLM 提取失败：${e.message?.take(80) ?: "未知错误"}"
+        }
     }
 }

@@ -66,7 +66,11 @@ class DrugEntryActivity : AppCompatActivity() {
      * 导航到指定步骤
      */
     fun navigateTo(step: DrugEntryStep) {
-        session = session.copy(currentStep = step)
+        session = session.copy(
+            currentStep = step,
+            // 每次进入裁剪 OCR 前清空上次的语音补充，避免带入下一轮
+            fieldVoiceInputs = if (step == DrugEntryStep.CROP) emptyMap() else session.fieldVoiceInputs
+        )
         val fragment = createFragmentForStep(step)
         val tag = step.name
 
@@ -84,7 +88,15 @@ class DrugEntryActivity : AppCompatActivity() {
         return when (step) {
             DrugEntryStep.ENTRY -> EntryFragment()
             DrugEntryStep.CAPTURE -> CaptureGuideFragment()
-            DrugEntryStep.CROP -> CropFragment()
+            DrugEntryStep.CROP -> {
+                // 单字段重拍 → SingleFieldCropFragment（含语音补充）
+                // 全字段 OCR（首次采集或全字段重拍）→ CropFragment（无语音补充）
+                if (session.retakeFieldTarget != null) {
+                    SingleFieldCropFragment()
+                } else {
+                    CropFragment()
+                }
+            }
             DrugEntryStep.COMPLETION -> CaptureCompleteFragment()
             DrugEntryStep.CONFIRM -> ConfirmFragment()
             DrugEntryStep.MANUAL -> ManualEntryFragment()
