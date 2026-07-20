@@ -1,6 +1,7 @@
 package com.example.myocr.drugentry
 
 import android.net.Uri
+import com.example.myocr.OcrLine
 
 /**
  * 字段识别状态
@@ -55,11 +56,17 @@ data class DrugEntrySession(
     /** 待裁剪的照片路径（拍照后先裁剪再 OCR） */
     val pendingPhotoPath: String = "",
 
+    /** OCR 逐行识别结果（用于 OcrSelectionFragment 展示和选择） */
+    val ocrLines: List<OcrLine> = emptyList(),
+
     /** OCR 原始识别文本（用于调试展示） */
     val rawOcrText: String = "",
 
     /** LLM 原始响应 JSON（用于调试展示） */
     val llmResponseJson: String = "",
+
+    /** LLM 请求 prompt 文本（用于调试展示） */
+    val llmRequestText: String = "",
 
     /** 各字段用户已采纳的语音补充文本（用于 LLM 提取参考） */
     val fieldVoiceInputs: Map<String, String> = emptyMap(),
@@ -72,6 +79,8 @@ enum class DrugEntryStep {
     CAPTURE,
     /** 选区裁剪（拍照后，OCR 前） */
     CROP,
+    /** OCR 行选择（OCR 后，用户选择行→字段） */
+    OCR_SELECTION,
     /** 多角度补全 */
     COMPLETION,
     /** 信息确认 */

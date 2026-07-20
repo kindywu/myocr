@@ -3,7 +3,6 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#B3000000"
     android:clickable="true">
 
     <LinearLayout
@@ -16,12 +15,41 @@
         android:padding="32dp"
         android:elevation="16dp">
 
+        <!-- 顶部标题栏：关闭按钮 -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:id="@+id/listeningHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="@string/voice_listening"
+                android:textSize="16sp"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/closeButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="end|center_vertical"
+                android:src="@drawable/ic_close"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/voice_cancel"
+                android:scaleType="center"
+                android:tint="@color/text_tertiary" />
+
+        </FrameLayout>
+
         <!-- 脉冲动画环 + 麦克风 -->
         <FrameLayout
             android:id="@+id/micContainer"
             android:layout_width="80dp"
             android:layout_height="80dp"
-            android:layout_marginBottom="20dp">
+            android:layout_marginBottom="12dp">
 
             <!-- 脉冲环1（外层，动画缩放） -->
             <View
@@ -55,17 +83,6 @@
                 android:contentDescription="@string/voice_input_label" />
 
         </FrameLayout>
-
-        <!-- "正在聆听..." 提示 -->
-        <TextView
-            android:id="@+id/listeningHint"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/voice_listening"
-            android:textSize="16sp"
-            android:textColor="@color/text_primary"
-            android:textStyle="bold"
-            android:layout_marginBottom="4dp" />
 
         <!-- 字段标签提示 -->
         <TextView

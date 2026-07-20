@@ -1,11 +1,16 @@
 package com.example.myocr.drugentry
 
 import android.util.Log
+import com.example.myocr.OcrLine
 
 /**
- * 药品 OCR 文本预过滤器
+ * 药品 OCR 文本预过滤器 + 快速规则提取
  *
- * 不再做任何正则字段提取，仅提供基础文本清理。 字段解析完全交由 LLM 处理。
+ * 提供两套提取方案：
+ * - [quickExtract] — 关键词+位置规则提取，用于直接填充补全页字段（跳过 LLM）
+ * - 字段级 LLM 提取 — 用户在补全页点击字段触发，由 [DeepSeekClient] 处理
+ *
+ * 以下旧 [parse] 方法已废弃。正则提取能力已迁移到 [quickExtract]。
  */
 class DrugOcrParser {
 
@@ -23,6 +28,90 @@ class DrugOcrParser {
         const val MIN_DRUG_NAME_LEN = 3
         /** 药品名称最长字符数 */
         const val MAX_DRUG_NAME_LEN = 50
+
+        /**
+         * 基于关键词 + 剂型后缀的快速字段提取（跳过 LLM）
+         *
+         * 提取策略：
+         * - 药品名称：优先匹配含 [VALID_DRUG_SUFFIXES] 的行，再取第一中文行兜底
+         * - 有效期：关键词（有效期/EXP/失效）+ 日期模式
+         * - 厂家：含生产/制药/药业/有限公司等
+         * - 批号：含批号/Lot/Batch/Serial 等
+         *
+         * 规则提取直接填字段，不等 LLM。用户可在补全页点击字段触发 LLM 改善。
+         */
+        fun quickExtract(ocrLines: List<OcrLine>): DrugInfo {
+            if (ocrLines.isEmpty()) return DrugInfo()
+
+            var drugName = ""
+            var expiryDate = ""
+            var manufacturer = ""
+            var batchNumber = ""
+            var firstChineseLine = ""
+
+            for (line in ocrLines) {
+                val text = line.text.trim()
+                if (text.isBlank()) continue
+
+                // 有效期：关键词 + 日期模式
+                if (expiryDate.isBlank() && (
+                    text.contains("有效期") ||
+                    text.contains("有效至") ||
+                    text.contains("EXP", ignoreCase = true) ||
+                    text.contains("失效") ||
+                    text.endsWith("期") ||
+                    text.matches(Regex("""^\d{4}[-/.]\d{1,2}([-/.]\d{1,2})?$"""))
+                )) {
+                    expiryDate = text
+                    continue
+                }
+
+                // 批号
+                if (batchNumber.isBlank() && (
+                    text.contains("批号") ||
+                    text.contains("Lot", ignoreCase = true) ||
+                    text.contains("BATCH", ignoreCase = true) ||
+                    text.contains("Serial", ignoreCase = true)
+                )) {
+                    batchNumber = text
+                    continue
+                }
+
+                // 厂家
+                if (manufacturer.isBlank() && (
+                    text.contains("生产") ||
+                    text.contains("制药") ||
+                    text.contains("药业") ||
+                    text.contains("有限公司") ||
+                    text.contains("生物")
+                )) {
+                    manufacturer = text
+                    continue
+                }
+
+                // 药品名称：优先匹配含剂型后缀的行（如"布洛芬缓释胶囊"→含"胶囊"）
+                if (drugName.isBlank() && text.length >= 2 && text.any { it in '一'..'鿿' }) {
+                    val suffixMatch = VALID_DRUG_SUFFIXES.any { text.contains(it) }
+                    if (suffixMatch) {
+                        drugName = text
+                        continue
+                    }
+                }
+
+                // 第一中文行兜底（非噪音）
+                if (firstChineseLine.isBlank() && text.length >= 2 && text.any { it in '一'..'鿿' }) {
+                    val skipWords = listOf("处方", "医保", "OTC", "外用", "贮藏", "注意")
+                    if (!skipWords.any { text.contains(it) }) {
+                        firstChineseLine = text
+                    }
+                }
+            }
+
+            // 兜底：没找到含剂型后缀的行时，用第一行中文
+            if (drugName.isBlank()) drugName = firstChineseLine
+
+            return DrugInfo(drugName, expiryDate, manufacturer, batchNumber)
+        }
 
         /** 已知的药品剂型后缀（备用） */
         val VALID_DRUG_SUFFIXES =

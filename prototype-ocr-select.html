@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>OCR 选择原型 v2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'PingFang SC', 'Noto Sans SC', sans-serif;
+    background: #f5f5f7;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+  }
+  .phone {
+    width: 390px;
+    background: #fff;
+    border-radius: 44px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+    overflow: hidden;
+    position: relative;
+    min-height: 800px;
+  }
+  .status-bar { padding: 14px 24px 8px; display: flex; justify-content: space-between; font-size: 12px; color: #666; }
+
+  .header {
+    padding: 8px 20px 16px;
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid #eee;
+  }
+  .header .back {
+    width: 32px; height: 32px; border-radius: 50%; background: #f0f0f0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; cursor: pointer;
+  }
+  .header h1 { font-size: 17px; font-weight: 600; flex: 1; }
+  .header .step { font-size: 13px; color: #999; }
+
+  .content { padding: 20px; }
+
+  .section-title { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px; }
+  .section-hint { font-size: 13px; color: #888; margin-bottom: 16px; line-height: 1.5; }
+
+  /* OCR line card */
+  .ocr-card {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .ocr-card:hover { border-color: #ddd; }
+  .ocr-card.selected { border-color: #4A90D9; background: #EEF4FF; }
+
+  .ocr-card .check {
+    width: 24px; height: 24px; min-width: 24px;
+    border-radius: 50%;
+    border: 2px solid #ccc;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; color: #fff;
+    transition: all 0.2s;
+  }
+  .ocr-card.selected .check { background: #4A90D9; border-color: #4A90D9; }
+
+  .ocr-card .line-info { flex: 1; }
+  .ocr-card .line-num { font-size: 11px; color: #aaa; margin-bottom: 2px; }
+  .ocr-card .line-text { font-size: 16px; color: #222; letter-spacing: 0.5px; }
+  .ocr-card .field-tag {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .tag-drugName { background: #E3F2FD; color: #1565C0; }
+  .tag-expiryDate { background: #FFF3E0; color: #E65100; }
+  .tag-manufacturer { background: #F3E5F5; color: #7B1FA2; }
+  .tag-batchNumber { background: #E8F5E9; color: #2E7D32; }
+  .tag-unassigned { background: #f0f0f0; color: #999; }
+
+  /* Field mapping cards */
+  .field-card {
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    border: 2px dashed #ddd;
+    background: #fafafa;
+    transition: all 0.2s;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .field-card.filled { border-style: solid; border-color: #4A90D9; background: #F5F9FF; }
+
+  .field-card .field-icon { font-size: 20px; }
+  .field-card .field-label { font-size: 11px; color: #999; }
+  .field-card .field-value { font-size: 15px; color: #333; min-height: 20px; }
+  .field-card .field-placeholder { font-size: 13px; color: #bbb; font-style: italic; }
+  .field-card .field-actions { margin-left: auto; display: flex; gap: 6px; }
+  .field-card .field-clear {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #eee; border: none; font-size: 14px; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+  }
+  .field-card.filled .field-clear { display: flex; }
+  .field-card .field-info { flex: 1; }
+
+  /* Field picker bottom sheet */
+  .overlay {
+    display: none;
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 10;
+  }
+  .overlay.show { display: block; }
+
+  .bottom-sheet {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: #fff;
+    border-radius: 20px 20px 0 0;
+    padding: 20px;
+    animation: slideUp 0.3s ease;
+    z-index: 11;
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+  .bottom-sheet .handle {
+    width: 36px; height: 4px; background: #ddd; border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+  .bottom-sheet .bs-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .bottom-sheet .bs-subtitle { font-size: 14px; color: #666; margin-bottom: 16px; }
+  .bottom-sheet .bs-text { font-size: 18px; color: #222; margin-bottom: 16px; padding: 8px 0; }
+
+  .field-option {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; border-radius: 12px;
+    margin-bottom: 6px; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .field-option:hover { background: #f5f5f5; }
+  .field-option .fo-icon { font-size: 22px; }
+  .field-option .fo-label { font-size: 15px; }
+  .field-option .fo-desc { font-size: 12px; color: #999; }
+  .field-option .fo-check { margin-left: auto; color: #4A90D9; font-size: 18px; display: none; }
+  .field-option.selected .fo-check { display: block; }
+  .field-option.selected { background: #EEF4FF; }
+
+  .bs-close {
+    width: 100%; height: 48px; border-radius: 12px;
+    border: none; background: #4A90D9; color: #fff;
+    font-size: 16px; font-weight: 500; cursor: pointer;
+    margin-top: 8px;
+  }
+  .bs-unassign {
+    width: 100%; height: 44px; border-radius: 12px;
+    border: 1.5px solid #ddd; background: #fff; color: #999;
+    font-size: 14px; cursor: pointer; margin-top: 8px;
+  }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+  .btn {
+    flex: 1; height: 48px; border-radius: 12px;
+    border: none; font-size: 16px; font-weight: 500; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary { background: #4A90D9; color: #fff; }
+  .btn-primary:disabled { background: #b0cce8; cursor: not-allowed; }
+  .btn-outline { background: #fff; color: #4A90D9; border: 1.5px solid #4A90D9; }
+
+  /* Summary */
+  .summary-bar {
+    background: #F0F4FF; border-radius: 10px;
+    padding: 12px 16px; margin: 16px 0;
+    display: none; align-items: center; gap: 10px;
+    font-size: 13px; color: #444;
+  }
+  .summary-bar .count { color: #4A90D9; font-weight: 600; }
+
+  .toast {
+    position: absolute; bottom: 100px; left: 20px; right: 20px;
+    background: #333; color: #fff; padding: 14px 20px; border-radius: 10px;
+    font-size: 14px; text-align: center;
+    opacity: 0; transition: opacity 0.3s;
+    pointer-events: none; z-index: 20;
+  }
+  .toast.show { opacity: 1; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .mode-switch {
+    text-align: center; padding: 12px;
+    font-size: 12px; color: #999;
+    border-top: 1px solid #eee;
+  }
+  .mode-switch a { color: #4A90D9; cursor: pointer; text-decoration: underline; margin: 0 4px; }
+</style>
+</head>
+<body>
+<div class="phone" id="app">
+  <div class="status-bar"><span>9:41</span><span>📶 🔋</span></div>
+
+  <!-- ═══ Page 1: Crop Screen ═══ -->
+  <div class="page active" id="page1">
+    <div class="header">
+      <div class="back" onclick="goTo(1)">←</div>
+      <h1>选区识别</h1>
+      <span class="step">2/5</span>
+    </div>
+    <div class="content" style="text-align:center;">
+      <div style="background:#e8ecf0;border-radius:16px;height:320px;display:flex;align-items:center;justify-content:center;color:#999;font-size:14px;margin-bottom:20px;">
+        [ 裁剪预览区域 ]<br><span style="font-size:12px;margin-top:8px;">药盒照片</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="showToast('返回拍照')">重拍</button>
+        <button class="btn btn-primary" onclick="startOcr()">确认识别</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Page 2: OCR Running ═══ -->
+  <div class="page" id="page2">
+    <div class="header">
+      <div class="back" style="visibility:hidden;">←</div>
+      <h1>识别中</h1>
+    </div>
+    <div class="content" style="text-align:center;padding-top:80px;">
+      <div style="font-size:48px;margin-bottom:24px;">🔍</div>
+      <div style="font-size:16px;color:#666;">正在识别文字区域…</div>
+      <div style="margin-top:20px;color:#4A90D9;font-size:13px;" id="ocrProgress">PP-OCRv6 推理中</div>
+    </div>
+  </div>
+
+  <!-- ═══ Page 3: Line Selection ═══ -->
+  <div class="page" id="page3">
+    <div class="header">
+      <div class="back" onclick="goTo(1)">←</div>
+      <h1>选择识别内容</h1>
+      <span class="step">3/5</span>
+    </div>
+    <div class="content">
+      <div class="section-hint">
+        👆 点选文字行 → 选择它属于哪个字段。<br>
+        点 <strong>跳过</strong> 使用自动识别结果。
+      </div>
+
+      <div class="section-title">OCR 识别结果</div>
+      <div id="ocrLineList"></div>
+
+      <div class="summary-bar" id="summaryBar">
+        <span>✅ 已分配 <span class="count" id="filledCount">0</span>/4 个字段</span>
+        <span style="margin-left:auto;font-size:12px;color:#999;">点击字段卡片可修改</span>
+      </div>
+
+      <div class="section-title">字段分配</div>
+      <div id="fieldMapping"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="skipToResult()">跳过 → 自动识别</button>
+        <button class="btn btn-primary" id="confirmBtn" onclick="goToResult()" disabled>确认并继续 (0/4)</button>
+      </div>
+      <div style="text-align:center;margin-top:12px;">
+        <span style="font-size:12px;color:#4A90D9;cursor:pointer;" onclick="showToast('调用 DeepSeek 改善全部字段 (~3s)')">
+          🤖 用 AI 智能提取全部字段
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Page 4: Result ═══ -->
+  <div class="page" id="page4">
+    <div class="header">
+      <div class="back" onclick="goTo(3)">←</div>
+      <h1>识别详情</h1>
+      <span class="step">4/5</span>
+    </div>
+    <div class="content">
+      <div style="margin-bottom:16px;" id="resultSource"></div>
+      <div id="resultCards"></div>
+      <div class="btn-row" style="margin-top:24px;">
+        <button class="btn btn-outline" onclick="showToast('继续拍摄')">继续拍摄</button>
+        <button class="btn btn-primary" onclick="showToast('跳转到确认页')">查看结果</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay + Bottom Sheet for field assignment -->
+  <div class="overlay" id="overlay" onclick="closeSheet()">
+    <div class="bottom-sheet" id="sheet" onclick="event.stopPropagation()">
+      <div class="handle"></div>
+      <div class="bs-title">分配字段</div>
+      <div class="bs-subtitle">这行文字对应哪个字段？</div>
+      <div class="bs-text" id="sheetText">—</div>
+      <div id="fieldOptions">
+        <div class="field-option" data-field="drugName" onclick="assignField('drugName')">
+          <span class="fo-icon">💊</span>
+          <div><div class="fo-label">药品名称</div><div class="fo-desc">药品的通用名称，如「布洛芬缓释胶囊」</div></div>
+          <span class="fo-check">✓</span>
+        </div>
+        <div class="field-option" data-field="expiryDate" onclick="assignField('expiryDate')">
+          <span class="fo-icon">📅</span>
+          <div><div class="fo-label">有效期至</div><div class="fo-desc">有效期或过期日期，如「2026-09」</div></div>
+          <span class="fo-check">✓</span>
+        </div>
+        <div class="field-option" data-field="manufacturer" onclick="assignField('manufacturer')">
+          <span class="fo-icon">🏭</span>
+          <div><div class="fo-label">生产厂家</div><div class="fo-desc">制药企业名称，如「中美天津史克制药」</div></div>
+          <span class="fo-check">✓</span>
+        </div>
+        <div class="field-option" data-field="batchNumber" onclick="assignField('batchNumber')">
+          <span class="fo-icon">🔢</span>
+          <div><div class="fo-label">批号</div><div class="fo-desc">生产批号 / Lot No.</div></div>
+          <span class="fo-check">✓</span>
+        </div>
+      </div>
+      <button class="bs-close" onclick="closeSheet()">确定</button>
+      <button class="bs-unassign" id="unassignBtn" onclick="unassignField()" style="display:none;">清除分配</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="mode-switch">
+    <a onclick="loadScenario('ibuprofen')">💊 布洛芬药盒</a>
+    <a onclick="loadScenario('amoxicillin')">💊 阿莫西林药盒</a>
+  </div>
+</div>
+
+<script>
+// ── Demo Data ──
+const SCENARIOS = {
+  ibuprofen: {
+    name: '布洛芬缓释胶囊药盒',
+    ocrLines: [
+      { id: 0, text: "药从得" },
+      { id: 1, text: "布洛芬缓释胶囊" },
+      { id: 2, text: "药理作用" },
+      { id: 3, text: "12" },
+      { id: 4, text: "每服由一次可持续" },
+      { id: 5, text: "中美天津史克制药有限公司" },
+      { id: 6, text: "12小时止痛" },
+      { id: 7, text: "详见说明书" },
+      { id: 8, text: "24粒" },
+      { id: 9, text: "粒装" },
+    ],
+    rules: { drugName: "药从得", manufacturer: "中美天津史克制药有限公司" },
+    autoAssignHint: { 1: 'drugName', 5: 'manufacturer' }
+  },
+  amoxicillin: {
+    name: '阿莫西林分散片药盒',
+    ocrLines: [
+      { id: 0, text: "阿莫西林分散片" },
+      { id: 1, text: "0.25g×24片" },
+      { id: 2, text: "国药准字H20020345" },
+      { id: 3, text: "广州白云山制药股份有限公司" },
+      { id: 4, text: "有效期至" },
+      { id: 5, text: "2026-09" },
+      { id: 6, text: "批号" },
+      { id: 7, text: "230501" },
+    ],
+    rules: { drugName: "阿莫西林分散片", manufacturer: "广州白云山制药股份有限公司" },
+    autoAssignHint: { 0: 'drugName', 3: 'manufacturer', 5: 'expiryDate', 7: 'batchNumber' }
+  }
+};
+
+let scenario = null;
+let fieldMap = { drugName: null, expiryDate: null, manufacturer: null, batchNumber: null };
+let pendingLineId = null; // For bottom sheet
+
+function loadScenario(name) {
+  scenario = SCENARIOS[name];
+  fieldMap = { drugName: null, expiryDate: null, manufacturer: null, batchNumber: null };
+  pendingLineId = null;
+  goTo(1);
+  document.querySelector('.status-bar').innerHTML = `<span>9:41</span><span>📶 🔋</span>`;
+}
+
+function goTo(page) {
+  [1,2,3,4].forEach(p => document.getElementById(`page${p}`).classList.remove('active'));
+  document.getElementById(`page${page}`).classList.add('active');
+  if (page === 3) {
+    renderLines();
+    renderFields();
+    updateSummary();
+  }
+}
+
+function startOcr() {
+  if (!scenario) loadScenario('ibuprofen');
+  goTo(2);
+  setTimeout(() => { document.getElementById('ocrProgress').textContent = 'CTC 解码中…'; }, 500);
+  setTimeout(() => { document.getElementById('ocrProgress').textContent = '✓ 识别完成'; }, 1200);
+  setTimeout(() => { goTo(3); }, 1700);
+}
+
+// ── Line Selection ──
+function renderLines() {
+  const list = document.getElementById('ocrLineList');
+  list.innerHTML = '';
+  scenario.ocrLines.forEach((line, i) => {
+    const assignedField = assigned(line.id);
+    const tag = assignedField
+      ? `<span class="field-tag tag-${assignedField}">${fieldLabel(assignedField)}</span>`
+      : `<span class="field-tag tag-unassigned">未分配</span>`;
+
+    const card = document.createElement('div');
+    card.className = `ocr-card${assignedField ? ' selected' : ''}`;
+    card.dataset.id = line.id;
+    card.onclick = () => openSheet(line.id);
+    card.innerHTML = `
+      <div class="check">✓</div>
+      <div class="line-info">
+        <div class="line-num">行 ${i+1}</div>
+        <div class="line-text">${line.text}</div>
+      </div>
+      ${tag}
+    `;
+    list.appendChild(card);
+  });
+}
+
+function assigned(lineId) {
+  for (const [f, id] of Object.entries(fieldMap)) {
+    if (id === lineId) return f;
+  }
+  return null;
+}
+
+function fieldLabel(f) {
+  return { drugName: '药品名称', expiryDate: '有效期至', manufacturer: '生产厂家', batchNumber: '批号' }[f] || f;
+}
+
+function fieldIcon(f) {
+  return { drugName: '💊', expiryDate: '📅', manufacturer: '🏭', batchNumber: '🔢' }[f] || '❓';
+}
+
+// ── Bottom Sheet ──
+function openSheet(lineId) {
+  pendingLineId = lineId;
+  const line = scenario.ocrLines.find(l => l.id === lineId);
+  document.getElementById('sheetText').textContent = `「${line.text}」`;
+
+  // Highlight current assignment
+  const currentField = assigned(lineId);
+  document.querySelectorAll('.field-option').forEach(el => {
+    el.classList.toggle('selected', el.dataset.field === currentField);
+  });
+
+  // Show/hide unassign button
+  document.getElementById('unassignBtn').style.display = currentField ? 'block' : 'none';
+
+  document.getElementById('overlay').classList.add('show');
+}
+
+function closeSheet() {
+  document.getElementById('overlay').classList.remove('show');
+  pendingLineId = null;
+}
+
+function assignField(field) {
+  if (pendingLineId === null) return;
+
+  // If this field already had a different line, unassign it
+  if (fieldMap[field] !== null && fieldMap[field] !== pendingLineId) {
+    // Unassign the old line
+  }
+
+  // Unassign this line from its previous field if any
+  for (const [f, id] of Object.entries(fieldMap)) {
+    if (id === pendingLineId) fieldMap[f] = null;
+  }
+
+  fieldMap[field] = pendingLineId;
+  renderLines();
+  renderFields();
+  updateSummary();
+  closeSheet();
+}
+
+function unassignField() {
+  if (pendingLineId === null) return;
+  for (const [f, id] of Object.entries(fieldMap)) {
+    if (id === pendingLineId) fieldMap[f] = null;
+  }
+  renderLines();
+  renderFields();
+  updateSummary();
+  closeSheet();
+}
+
+// ── Field Mapping Display ──
+function renderFields() {
+  const container = document.getElementById('fieldMapping');
+  container.innerHTML = '';
+  const fields = [
+    { key: 'drugName', icon: '💊', label: '药品名称' },
+    { key: 'expiryDate', icon: '📅', label: '有效期至' },
+    { key: 'manufacturer', icon: '🏭', label: '生产厂家' },
+    { key: 'batchNumber', icon: '🔢', label: '批号' },
+  ];
+
+  fields.forEach(f => {
+    const lineId = fieldMap[f.key];
+    const line = lineId !== null ? scenario.ocrLines.find(l => l.id === lineId) : null;
+    const card = document.createElement('div');
+    card.className = `field-card${line ? ' filled' : ''}`;
+    card.onclick = () => {
+      if (line) { openSheet(line.id); }
+    };
+    card.innerHTML = `
+      <div class="field-icon">${f.icon}</div>
+      <div class="field-info">
+        <div class="field-label">${f.label}</div>
+        ${line
+          ? `<div class="field-value">${line.text}</div>`
+          : `<div class="field-placeholder">点击上方文字行分配…</div>`}
+      </div>
+      <div class="field-actions">
+        <button class="field-clear" onclick="event.stopPropagation();clearField('${f.key}')">✕</button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function clearField(field) {
+  fieldMap[field] = null;
+  renderLines();
+  renderFields();
+  updateSummary();
+}
+
+function updateSummary() {
+  const filled = Object.values(fieldMap).filter(v => v !== null).length;
+  document.getElementById('filledCount').textContent = filled;
+  document.getElementById('summaryBar').style.display = filled > 0 ? 'flex' : 'none';
+  const btn = document.getElementById('confirmBtn');
+  btn.disabled = filled === 0;
+  btn.textContent = `确认并继续 (${filled}/4)`;
+}
+
+// ── Navigation ──
+function skipToResult() {
+  // Pre-fill with rule results
+  const r = scenario.rules;
+  fieldMap = { drugName: null, expiryDate: null, manufacturer: null, batchNumber: null };
+  // Try to match rule results to lines
+  for (const [field, val] of Object.entries(r)) {
+    if (!val) continue;
+    const match = scenario.ocrLines.find(l => l.text === val);
+    if (match) fieldMap[field] = match.id;
+  }
+  showResult('⚡ 自动规则提取');
+}
+
+function goToResult() {
+  showResult('📝 用户手动选择');
+}
+
+function showResult(source) {
+  document.getElementById('resultSource').innerHTML = `<span class="result-badge" style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;background:#E8F5E9;color:#2E7D32;">${source}</span>`;
+
+  const fields = [
+    { key: 'drugName', icon: '💊', label: '药品名称' },
+    { key: 'expiryDate', icon: '📅', label: '有效期至' },
+    { key: 'manufacturer', icon: '🏭', label: '生产厂家' },
+    { key: 'batchNumber', icon: '🔢', label: '批号' },
+  ];
+
+  const container = document.getElementById('resultCards');
+  container.innerHTML = '';
+  fields.forEach(f => {
+    const lineId = fieldMap[f.key];
+    const line = lineId !== null ? scenario.ocrLines.find(l => l.id === lineId) : null;
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.style.cssText = 'background:#f8f9fa;border-radius:12px;padding:14px 16px;margin-bottom:8px;position:relative;';
+    card.innerHTML = `
+      <div style="font-size:12px;color:#999;margin-bottom:2px;">${f.icon} ${f.label}</div>
+      <div style="font-size:16px;color:${line ? '#222' : '#ccc'};font-weight:500;">${line ? line.text : '—'}</div>
+      ${line ? `<div style="font-size:11px;color:#4A90D9;margin-top:4px;">✓ 已分配</div>` : `<div style="font-size:11px;color:#bbb;margin-top:4px;">待填写</div>`}
+      <button style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:12px;color:#4A90D9;background:none;border:none;cursor:pointer;" onclick="showToast('用 AI 改善「${f.label}」')">✎ AI</button>
+    `;
+    container.appendChild(card);
+  });
+
+  goTo(4);
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// Init
+loadScenario('ibuprofen');
+</script>
+</body>
+</html>

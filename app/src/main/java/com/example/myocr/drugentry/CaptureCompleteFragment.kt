@@ -116,7 +116,7 @@ class CaptureCompleteFragment : Fragment() {
                         if (!matches.isNullOrEmpty()) {
                             onVoiceResult(voiceFieldKey, matches[0])
                         }
-                        dismissVoiceDialog()
+                        stopVoiceInput()
                     }
 
                     override fun onError(error: Int) {
@@ -135,7 +135,7 @@ class CaptureCompleteFragment : Fragment() {
                         if (isAdded) {
                             Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
                         }
-                        dismissVoiceDialog()
+                        stopVoiceInput()
                     }
 
                     override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -151,6 +151,7 @@ class CaptureCompleteFragment : Fragment() {
 
         val fieldLabel = dialogView.findViewById<TextView>(R.id.fieldLabel)
         val cancelButton = dialogView.findViewById<Button>(R.id.cancelButton)
+        val closeButton = dialogView.findViewById<android.widget.ImageButton>(R.id.closeButton)
         val pulseRing1 = dialogView.findViewById<View>(R.id.pulseRing1)
         val pulseRing2 = dialogView.findViewById<View>(R.id.pulseRing2)
 
@@ -173,12 +174,12 @@ class CaptureCompleteFragment : Fragment() {
         pulseAnimator2 = startPulseAnimation(pulseRing2, 1200, 1.0f, 1.4f)
 
         cancelButton.setOnClickListener { stopVoiceInput() }
+        closeButton.setOnClickListener { stopVoiceInput() }
 
         voiceDialog =
                 com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
                         .setView(dialogView)
-                        .setCancelable(true)
-                        .setOnCancelListener { stopVoiceInput() }
+                        .setCancelable(false)
                         .show()
     }
 
@@ -233,6 +234,8 @@ class CaptureCompleteFragment : Fragment() {
     private fun stopVoiceInput() {
         speechRecognizer?.stopListening()
         speechRecognizer?.cancel()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
         dismissVoiceDialog()
     }
 
@@ -542,10 +545,27 @@ class CaptureCompleteFragment : Fragment() {
 
         llmExecutor.execute {
             try {
-                val fc = client.extractSingleField(fieldKey, rawText)
-                val newValue = fc.bestValue
+                val voiceText = activity.session.fieldVoiceInputs[fieldKey] ?: ""
+                val ocrLines = activity.session.ocrLines
+                val singleResult = client.extractSingleField(fieldKey, rawText, ocrLines, voiceText)
+                val newValue = singleResult.allCandidates[fieldKey]?.bestValue ?: ""
 
+                // 保存单字段请求/响应到 session（供调试页展示），后续 UI 更新也在同一 runOnUiThread 中
                 activity.runOnUiThread {
+                    // 先保存 LLM 数据到 session
+                    val fullRequest = buildString {
+                        append("=== System Prompt (${getFieldLabel(fieldKey)}) ===\n")
+                        append(singleResult.systemPrompt)
+                        append("\n\n=== User Message ===\n")
+                        append(singleResult.formattedInput)
+                    }
+                    activity.updateSession {
+                        it.copy(
+                            llmRequestText = fullRequest,
+                            llmResponseJson = singleResult.rawApiResponse
+                        )
+                    }
+
                     if (!isAdded) return@runOnUiThread
 
                     if (newValue.isNotBlank()) {
@@ -649,9 +669,16 @@ class CaptureCompleteFragment : Fragment() {
         }
 
         val llmJson = session.llmResponseJson
+        val llmRequest = session.llmRequestText
+
+        if (llmRequest.isNotBlank()) {
+            sb.append("\n\n━━━ LLM 请求 ━━━\n")
+            sb.append(llmRequest)
+        }
+
         if (llmJson.isNotBlank()) {
-            sb.append("\n\n━━━ LLM 提取结果 ━━━\n")
-            sb.append(llmJson.take(3000))
+            sb.append("\n\n━━━ LLM 结果响应 ━━━\n")
+            sb.append(llmJson)
         } else {
             sb.append("\n\n(LLM 未执行或无响应)")
         }

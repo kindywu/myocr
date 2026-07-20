@@ -188,8 +188,21 @@ class DeepSeekClient(
          * 全字段返回 Map（5个字段各自的候选列表）
          */
         fun buildFullSystemPrompt(hasVoiceInput: Boolean = false): String = buildString {
-            appendLine("你是一个药品信息提取助手。根据 OCR 识别文本提取结构化药品信息。")
+            appendLine("你是一个药品信息提取助手。根据 OCR 识别文本和语音输入提取结构化药品信息。")
             appendLine()
+
+            // 语音规则必须前置，优先级高于一切
+            if (hasVoiceInput) {
+                appendLine("## ⚠️ 最高优先级规则：语音输入优先")
+                appendLine()
+                appendLine("用户提供了「语音输入文本」，这是经过用户确认的真实信息：")
+                appendLine("- 语音输入内容必须被采纳为对应字段的值，不得忽略")
+                appendLine("- 如果 OCR 文本与语音输入冲突，必须优先采信语音输入")
+                appendLine("- 如果语音输入提供了 OCR 文本中没有的信息，应将其填入最合理的字段")
+                appendLine("- 这条规则的优先级高于所有反幻觉规则")
+                appendLine()
+            }
+
             appendLine("## 字段定义")
             appendLine()
             for (def in FIELD_DEFINITIONS.values) {
@@ -199,22 +212,15 @@ class DeepSeekClient(
             }
             appendLine(COMMON_RULES)
             if (hasVoiceInput) {
-                appendLine()
-                appendLine("## 语音输入处理规则")
-                appendLine()
-                appendLine("当用户提供了「语音输入文本」时，它是对药品包装实物的补充信息：")
-                appendLine("- 语音输入是用户对着药品包装说话识别的结果，是用户确认的真实信息")
-                appendLine("- 语音输入中的内容必须被采纳为对应字段的值，除非 OCR 文本中存在明显更准确的信息")
-                appendLine("- 当语音输入内容与 OCR 文本中某个字段疑似冲突时，优先采信语音输入")
-                appendLine("- 语音输入可以帮助确定 OCR 文本中的某段文字对应哪个字段")
-                appendLine("- 如果语音输入提供了 OCR 文本中没有的信息，应将其填入最合理的字段")
+                // 语音规则已在上方前置，这里不再重复
+                // 但需要在反幻觉规则中注明例外
             }
             appendLine()
             appendLine("## 字段特殊规则")
             appendLine()
             appendLine("### 药品名称（drugName）—— 允许知识修正")
             appendLine("药品名称是公开信息，LLM 可利用对药品的了解修正 OCR 拼写错误。")
-            appendLine("例如 OCR 识别「奥美拉唑溶肢真」「奥美拉唑溶肠胶嚷」等，应结合上下文输出正确的「奥美拉唑溶肠胶囊」。")
+            appendLine("例如 OCR 识别「奥美拉唑溶肢真」「奥美拉唑溶肠胶嚷」等，应结合上下文输出正确的「奥美拉唑肠溶胶囊」。")
             appendLine("如果 OCR 文本中完全没有与药品名称相关的线索，仍应返回空 candidates，不得凭空编造。")
             appendLine("confidence 应根据修正程度合理赋值：完全匹配 0.9+，轻度修正 0.7-0.9，较大修正 0.4-0.7。")
             appendLine()
@@ -278,6 +284,7 @@ class DeepSeekClient(
 有效期格式：yyyy-MM 或 yyyy-MM-dd（如 2026-09 或 2026-09-15）。
 
 规则：
+- 如果存在语音输入，这是用户对着包装说话识别的结果，应优先采纳为有效期值
 - 优先寻找标注「有效期至」「有效期」「EXP」「失效期」后面的日期
 - OCR 可能将分隔符识别为点(.)、斜杠(/)、中文句号，统一转为横杠(-)
 - 如果只有「生产日期」+「保质期 X 年/月」，可以计算：有效期 = 生产日期 + 保质期
@@ -298,6 +305,7 @@ class DeepSeekClient(
 生产厂家通常包含「有限公司」「制药」「药业」「生物」等关键词。
 
 规则：
+- 如果存在语音输入，这是用户对着包装说话识别的结果，应优先采纳为厂家值
 - 优先寻找标注「生产企业」「生产单位」「厂家」「Manufacturer」后面的名称
 - ❌ 只提取 OCR 文本中真实出现的厂家名称，不得根据药品名称推断厂家
 - ❌ 不要提取经销商、代理商名称
@@ -317,6 +325,7 @@ class DeepSeekClient(
 同一药品所有批次共用，固定不变。
 
 规则：
+- 如果存在语音输入，这是用户对着包装说话识别的结果，应优先采纳为批准文号值
 - 优先提取明确标注了「批准文号」「国药准字」「注册证号」后面的编码
 - OCR 常将「准」识别为「度」，将「H」识别为「1」「I」，数字之间也常混淆，可根据药品知识修正 OCR 拼写错误
 - 例如 OCR 识别「国药度字H20046431 0」或「国药准字H2oo4643」等，应结合药品知识输出正确的「国药准字H20046430」
@@ -336,6 +345,7 @@ class DeepSeekClient(
 每个生产批次不同，用于召回与追溯。
 
 规则：
+- 如果存在语音输入，这是用户对着包装说话识别的结果，应优先采纳为批号值
 - 优先提取明确标注了「批号」「Lot」「Batch No.」后面的编号
 - 注意：生产批号 ≠ 批准文号，两者不要混淆
 - ❌ 批号每批不同，LLM 无法凭知识推断，必须直接来源于 OCR 文本
@@ -544,8 +554,10 @@ class DeepSeekClient(
         val success: Boolean,
         val allCandidates: Map<String, FieldCandidates> = emptyMap(),
         val drugInfo: DrugInfo = DrugInfo(),
-        /** 实际发送给 LLM 的完整输入文本（调试用） */
+        /** 实际发送给 LLM 的用户消息（调试用） */
         val formattedInput: String = "",
+        /** 发送给 LLM 的 system prompt（调试用，与 [formattedInput] 拼接即为完整请求） */
+        val systemPrompt: String = "",
         /** LLM 原始响应 JSON（调试用，可直接用于 [parseResponse] 测试） */
         val rawApiResponse: String = "",
         val error: String = ""
@@ -589,26 +601,23 @@ class DeepSeekClient(
             return Result(false, error = "OCR 文本为空")
         }
 
+        // 先构建请求文本（不论成功失败都存到 Result 中，供调试用）
+        val formattedText = if (ocrLines.isNotEmpty()) {
+            formatPositionalUserMessage(ocrLines, userVoiceText)
+        } else {
+            val filtered = DrugOcrParser.preFilter(rawText)
+            formatSimpleUserMessage(filtered, userVoiceText)
+        }
+        val systemPrompt = buildFullSystemPrompt(hasVoiceInput = userVoiceText.isNotBlank())
+
         return try {
-            // 1️⃣ 格式化用户消息
-            val formattedText = if (ocrLines.isNotEmpty()) {
-                formatPositionalUserMessage(ocrLines, userVoiceText)
-            } else {
-                val filtered = DrugOcrParser.preFilter(rawText)
-                formatSimpleUserMessage(filtered, userVoiceText)
-            }
-
-            // 2️⃣ 动态构建全字段 system prompt（基于 FIELD_DEFINITIONS）
-            // 仅在用户提供了语音补充时才包含语音输入处理规则
-            val systemPrompt = buildFullSystemPrompt(hasVoiceInput = userVoiceText.isNotBlank())
-
-            // 3️⃣ 调用 API（含重试）
+            // 1️⃣ 调用 API（含重试）
             val responseJson = callApiWithRetry(formattedText, systemPrompt)
 
-            // 4️⃣ 解析全部 5 个字段
+            // 2️⃣ 解析全部 5 个字段
             val rawCandidates = parseResponse(responseJson)
 
-            // 5️⃣ 映射到 DrugInfo（approvalNumber + lotNumber → batchNumber）
+            // 3️⃣ 映射到 DrugInfo（approvalNumber + lotNumber → batchNumber）
             val bestInfo = toDrugInfo(rawCandidates)
 
             Log.d(TAG, "LLM full result: drugName=[${bestInfo.drugName}] " +
@@ -619,12 +628,18 @@ class DeepSeekClient(
                 allCandidates = rawCandidates,
                 drugInfo = bestInfo,
                 formattedInput = formattedText,
+                systemPrompt = systemPrompt,
                 rawApiResponse = responseJson
             )
         } catch (e: Exception) {
             val userMsg = toUserMessage(e)
             Log.e(TAG, "DeepSeek API call failed: $userMsg", e)
-            Result(false, error = userMsg)
+            Result(
+                success = false,
+                formattedInput = formattedText,
+                systemPrompt = systemPrompt,
+                error = userMsg
+            )
         }
     }
 
@@ -637,43 +652,52 @@ class DeepSeekClient(
      * @param rawText  ML Kit OCR 原始识别文本
      * @param ocrLines OCR 逐行识别结果（含位置信息），为空则走无位置路径
      * @param userVoiceText 用户语音补充文本（与 OCR 文本一起发给 LLM 参考）
-     * @return 该字段的候选列表，可直接取 [bestValue] 获取文本
+     * @return [Result]，其中 [allCandidates] 包含该字段的候选，取 [allCandidates][fieldKey]?.bestValue 获取最佳值
      */
     fun extractSingleField(
         fieldKey: String,
         rawText: String,
         ocrLines: List<OcrLine> = emptyList(),
         userVoiceText: String = ""
-    ): FieldCandidates {
+    ): Result {
         if (!FIELD_DEFINITIONS.containsKey(fieldKey)) {
             throw IllegalArgumentException("未知字段 key: $fieldKey，可用: ${FIELD_DEFINITIONS.keys}")
         }
 
-        if (rawText.isBlank()) return FieldCandidates()
+        if (rawText.isBlank()) return Result(false, error = "OCR 文本为空")
+
+        // 先构建请求文本（不论成功失败都存到 Result 中，供调试用）
+        val fieldLabel = FIELD_DEFINITIONS[fieldKey]?.labelCn ?: ""
+        val formattedText = if (ocrLines.isNotEmpty()) {
+            formatPositionalUserMessage(ocrLines, userVoiceText, fieldLabel)
+        } else {
+            val filtered = DrugOcrParser.preFilter(rawText)
+            formatSimpleUserMessage(filtered, userVoiceText, fieldLabel)
+        }
+        val systemPrompt = buildSingleFieldSystemPrompt(fieldKey)
 
         return try {
-            // 1️⃣ 格式化用户消息（指定字段名，LLM 就不会返回无关字段）
-            val fieldLabel = FIELD_DEFINITIONS[fieldKey]?.labelCn ?: ""
-            val formattedText = if (ocrLines.isNotEmpty()) {
-                formatPositionalUserMessage(ocrLines, userVoiceText, fieldLabel)
-            } else {
-                val filtered = DrugOcrParser.preFilter(rawText)
-                formatSimpleUserMessage(filtered, userVoiceText, fieldLabel)
-            }
-
-            // 2️⃣ 动态构建单字段 system prompt
-            val systemPrompt = buildSingleFieldSystemPrompt(fieldKey)
-
-            // 3️⃣ 调用 API（含重试）
+            // 1️⃣ 调用 API（含重试）
             val responseJson = callApiWithRetry(formattedText, systemPrompt)
 
-            // 4️⃣ 解析（parseResponse 返回全部字段，但只取目标字段）
+            // 2️⃣ 解析（parseResponse 返回全部字段，但只取目标字段）
             val rawCandidates = parseResponse(responseJson)
 
-            rawCandidates[fieldKey] ?: FieldCandidates()
+            Result(
+                success = true,
+                allCandidates = rawCandidates,
+                formattedInput = formattedText,
+                systemPrompt = systemPrompt,
+                rawApiResponse = responseJson
+            )
         } catch (e: Exception) {
             Log.e(TAG, "DeepSeek single field [$fieldKey] failed: ${toUserMessage(e)}", e)
-            FieldCandidates()
+            Result(
+                success = false,
+                formattedInput = formattedText,
+                systemPrompt = systemPrompt,
+                error = toUserMessage(e)
+            )
         }
     }
 
